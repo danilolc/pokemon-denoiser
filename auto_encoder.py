@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from torch import nn
+from torch import nn, cat
 
 def PConv(in_c, out_c):
     return nn.Conv2d(in_c, out_c, 
@@ -19,20 +19,31 @@ def TConv(in_c, out_c):
 class PAutoE(nn.Module):
     def __init__(self):
         super().__init__()
-        self.convs = nn.Sequential(
+        
+        self.convs1 = nn.Sequential(
                 PConv(3, 64),
                 nn.ReLU(),
 
                 PConv(64, 64),
                 nn.ReLU(),
-
-                nn.AvgPool2d(2),
             )
-        self.tconvs = nn.Sequential(
+        self.pool = nn.Sequential(nn.AvgPool2d(2))
+
+        self.convs2 = nn.Sequential(
+                PConv(64, 64),
+                nn.ReLU(),
+
+                PConv(64, 64),
+                nn.ReLU(),
+            )
+            
+        self.tconv = nn.Sequential(
                 TConv(64, 64),
                 nn.ReLU(),
+            )
                 
-                PConv(64, 64),
+        self.convs3 = nn.Sequential(
+                PConv(128, 64),
                 nn.ReLU(),
                 
                 PConv(64, 3),
@@ -40,7 +51,13 @@ class PAutoE(nn.Module):
             )
         
     def forward(self, x):
-        x = self.convs(x)
-        x = self.tconvs(x)
+        x = self.convs1(x)
+        x1 = self.pool(x)
+
+        x1 = self.convs2(x1)
+        x1 = self.tconv(x1)
+
+        x = cat([x1, x], dim=1)
+        x = self.convs3(x)
 
         return x 
