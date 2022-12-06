@@ -5,6 +5,8 @@ import torch
 from torch import optim, nn
 from math import exp
 
+import numpy as np
+
 from tqdm import tqdm
 from random import randint
 import matplotlib.pyplot as plt
@@ -14,16 +16,19 @@ from auto_encoder import PAutoE
 
 pimages = load_dataset().to("cuda")
 
-for i in [-1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]:
+#VALS = [-2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]
+VALS = np.arange(-3, 3, 0.25)
+
+for i in VALS:
     
     n1 = exp(i)
-    n2 = exp(i + 0.5)
+    n2 = exp(i + 0.25)
     
     model = PAutoE().to("cuda")
     loss_func = nn.L1Loss(reduction='mean')
     optimizer = optim.SGD(model.parameters(), lr=5e-1)
     
-    pbar = tqdm(range(100001))
+    pbar = tqdm(range(30001))
     def closure():
         optimizer.zero_grad()
     
