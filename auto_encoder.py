@@ -21,16 +21,16 @@ class PAutoE(nn.Module):
         super().__init__()
         
         self.convs1 = nn.Sequential(
-                PConv(in_c, 64),
+                PConv(in_c, 32),
                 nn.ReLU(),
 
-                PConv(64, 64),
+                PConv(32, 32),
                 nn.ReLU(),
             )
         self.pool = nn.Sequential(nn.AvgPool2d(2))
 
         self.convs2 = nn.Sequential(
-                PConv(64, 64),
+                PConv(32, 64),
                 nn.ReLU(),
 
                 PConv(64, 64),
@@ -43,7 +43,7 @@ class PAutoE(nn.Module):
             )
                 
         self.convs3 = nn.Sequential(
-                PConv(128, 64),
+                PConv(64, 64),
                 nn.ReLU(),
                 
                 PConv(64, out_c),
@@ -69,7 +69,7 @@ class PAutoE(nn.Module):
         x1 = x1.permute(3,2,1,0)
         
         x1 = self.tconv(x1)
-        x = cat([x1, x], dim=1)
-        x = self.convs3(x)
+        #x = cat([x1, x], dim=1)
+        x = self.convs3(x1)
 
         return x 

@@ -18,8 +18,8 @@ pimages = load_dataset().to("cuda")
 
 #VALS = [-3.0, -2.5, -2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.0]
 
-STEP = 0.25
-VALS = np.arange(2, 4, STEP)
+STEP = 0.5
+VALS = np.arange(-3, 3, STEP)
 
 plt.imshow(pimages[0][251].cpu().detach().permute(1, 2, 0))
 plt.show()
@@ -33,7 +33,7 @@ for i in VALS:
     
     model = PAutoE().to("cuda")
     loss_func = nn.L1Loss(reduction='mean')
-    optimizer = optim.SGD(model.parameters(), lr=1e-1)
+    optimizer = optim.SGD(model.parameters(), lr=3e-1)
     
     pbar = tqdm(range(50001))
     def closure():
@@ -41,7 +41,7 @@ for i in VALS:
     
         source = randint(0, 2)
     
-        batch_size = 8
+        batch_size = 4
         batch = torch.randperm(385)[:batch_size]
     
         img = pimages[source][batch]
@@ -58,7 +58,7 @@ for i in VALS:
         loss = loss_func(pred, img2)
         loss.backward()
         
-        pbar.set_description("%.8f" % loss)
+        pbar.set_description(f"{i} {i+STEP} \t %.8f" % loss)
         
         return loss
         
@@ -76,4 +76,4 @@ for i in VALS:
             plt.show()
     
 
-    torch.save(model, f"model{i}-{i+0.5}.pth")
+    torch.save(model, f"model{i}-{i+STEP}.pth")
