@@ -50,13 +50,25 @@ class PAutoE(nn.Module):
                 nn.Sigmoid(),
             )
         
-    def forward(self, x):
+        self.type_linear = nn.Sequential(
+                nn.Linear(18, 32),
+                nn.ReLU(),
+                
+                nn.Linear(32, 64),
+                nn.ReLU(),
+            )
+        
+    def forward(self, x, ty):
         x = self.convs1(x)
+        
         x1 = self.pool(x)
-
         x1 = self.convs2(x1)
-        x1 = self.tconv(x1)
 
+        ty = self.type_linear(ty)
+        x1 = ty.permute(1,0) * x1.permute(3,2,1,0)
+        x1 = x1.permute(3,2,1,0)
+        
+        x1 = self.tconv(x1)
         x = cat([x1, x], dim=1)
         x = self.convs3(x)
 

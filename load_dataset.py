@@ -5,6 +5,7 @@ import torch
 from torchvision import transforms
 
 from PIL import Image
+import json
 
 def load_dataset(black_white=False):
     
@@ -26,3 +27,17 @@ def load_dataset(black_white=False):
     rs = load_images("./dataset/rs/")
     
     return torch.stack([emerald, frlg, rs])
+
+def load_types():
+    with open("types.json") as f:
+        types = json.load(f)
+        types = [t["english"] for t in types]
+        
+    with open("pokedex.json") as f:
+        pokemons = json.load(f)
+        pokemons = [t["type"] for t in pokemons]
+    
+    type_tensors = [[float(t in pokemons[i]) for t in types] for i in range(386)]
+    
+    return torch.tensor(type_tensors)
+    
