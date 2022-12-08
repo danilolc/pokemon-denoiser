@@ -6,7 +6,7 @@ from torchvision import transforms
 
 from PIL import Image
 
-def load_dataset():
+def load_dataset(black_white=False):
     
     transform = transforms.ToTensor()
     
@@ -14,6 +14,8 @@ def load_dataset():
         ten = []
         for i in range(386):
             img = Image.open(path + f"{i+1}.png").convert('RGB')
+            if black_white:
+                img = img.convert('L')
             img = transform(img)
             ten.append(img)
         

@@ -16,19 +16,24 @@ from auto_encoder import PAutoE
 
 pimages = load_dataset().to("cuda")
 
-#VALS = [-2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]
-VALS = np.arange(-3, 3, 0.25)
+#VALS = [-3.0, -2.5, -2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.0]
+
+STEP = 0.25
+VALS = np.arange(-3, 4, STEP)
+
+plt.imshow(pimages[0][251].cpu().detach().permute(1, 2, 0))
+plt.show()
 
 for i in VALS:
     
     n1 = exp(i)
-    n2 = exp(i + 0.25)
+    n2 = exp(i + STEP)
     
     model = PAutoE().to("cuda")
     loss_func = nn.L1Loss(reduction='mean')
     optimizer = optim.SGD(model.parameters(), lr=5e-1)
     
-    pbar = tqdm(range(30001))
+    pbar = tqdm(range(50001))
     def closure():
         optimizer.zero_grad()
     
@@ -39,8 +44,8 @@ for i in VALS:
     
         img = pimages[source][batch]
     
-        noise1 = torch.randn(batch_size, 3, 64, 64, device="cuda") / n1
-        noise2 = torch.randn(batch_size, 3, 64, 64, device="cuda") / n2
+        noise1 = torch.randn(img.size(), device="cuda") / n1
+        noise2 = torch.randn(img.size(), device="cuda") / n2
         
         img1 = noise1 + img
         img2 = noise2 + img
@@ -60,8 +65,9 @@ for i in VALS:
         
         if j % 1000 == 0:
             source = randint(0, 384)
-            image = pimages[1][source] + torch.randn(3, 64, 64, device="cuda") / n1
-            timage = model(image.unsqueeze(0)).squeeze()
+            image = pimages[1][source]
+            image = image + torch.randn(image.size(), device="cuda") / n1
+            timage = model(image.unsqueeze(0))[0]
             plt.imshow(timage.cpu().detach().permute(1, 2, 0))
             plt.show()
     

@@ -17,11 +17,11 @@ def TConv(in_c, out_c):
                               output_padding=1)
 
 class PAutoE(nn.Module):
-    def __init__(self):
+    def __init__(self, in_c=3, out_c=3):
         super().__init__()
         
         self.convs1 = nn.Sequential(
-                PConv(3, 64),
+                PConv(in_c, 64),
                 nn.ReLU(),
 
                 PConv(64, 64),
@@ -46,7 +46,7 @@ class PAutoE(nn.Module):
                 PConv(128, 64),
                 nn.ReLU(),
                 
-                PConv(64, 3),
+                PConv(64, out_c),
                 nn.Sigmoid(),
             )
         

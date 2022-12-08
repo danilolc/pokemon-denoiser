@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 
-#VALS = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5]
-VALS = np.arange(-3, 3, 0.25)
+STEP = 0.25
+VALS = np.arange(-1.0, 4, STEP)
 
 transform = transforms.ToTensor()
 
@@ -24,7 +24,7 @@ models = []
 noises = []
 for i in VALS:
     models.append( torch.load(f"model{i}-{i+0.5}.pth").cpu() )
-    noises.append( torch.randn(3, 64, 64) / exp(i) )
+    noises.append( torch.randn(1, 64, 64) / exp(i) )
 
 def show_images(img):
     
@@ -32,8 +32,8 @@ def show_images(img):
         img = img + noises[i]
         plt.imshow(img.detach().permute(1, 2, 0))
         plt.show()
-        img = models[i](img.unsqueeze(0)).squeeze()
-
+        img = models[i](img.unsqueeze(0))[0]
+        
         
     plt.imshow(img.detach().permute(1, 2, 0))
     plt.show()
@@ -43,6 +43,6 @@ def show_images(img):
 
 #img = Image.open("fenk2.png").convert('RGB')
 #img = transform(img)
-img = torch.zeros(3,64,64)
+img = torch.zeros(1,64,64) + 0.2
 
 show_images(img)
