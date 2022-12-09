@@ -9,12 +9,15 @@ import json
 
 def load_dataset(black_white=False):
     
+    PATH = "./dataset/"
+    PATH = "/home/danilo/Downloads/spritesA/"
+    
     transform = transforms.ToTensor()
     
     def load_images(path):
         ten = []
         for i in range(386):
-            img = Image.open(path + f"{i+1}.png").convert('RGB')
+            img = Image.open(path + f"{i+1}.png").convert('RGBA')
             if black_white:
                 img = img.convert('L')
             img = transform(img)
@@ -22,9 +25,9 @@ def load_dataset(black_white=False):
         
         return torch.stack(ten)
         
-    emerald = load_images("./dataset/emerald/")
-    frlg = load_images("./dataset/frlg/")
-    rs = load_images("./dataset/rs/")
+    emerald = load_images(PATH + "emerald/")
+    frlg = load_images(PATH + "frlg/")
+    rs = load_images(PATH + "rs/")
     
     return torch.stack([emerald, frlg, rs])
 
