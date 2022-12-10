@@ -7,60 +7,68 @@ Created on Sun Dec  4 13:47:15 2022
 """
 
 import torch
-from torchvision import transforms, utils
 from random import randint
+from tqdm import tqdm
 from math import exp
 import numpy as np
 
-import matplotlib.pyplot as plt
+from random import randint, random
+
+
 from PIL import Image
 
 import time
 
-from load_dataset import load_types, load_dataset
+from load_dataset import load_types, load_dataset, plot_image, save_image
 
-pimages = load_dataset()
-pimages[:,:,0] *= pimages[:,:,3]
-pimages[:,:,1] *= pimages[:,:,3]
-pimages[:,:,2] *= pimages[:,:,3]
+pimages = load_dataset().to("cuda") # HSV
+pimages = pimages[:,:,1:] # Remove H
 
 STEP = 0.25
-#VALS = np.arange(0.25, 3, STEP)
-VALS = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
-transform = transforms.ToTensor()
-
-types = load_types()
+VALS = np.arange(-2.75, 3, STEP)
 
 models = []
-noises = []
 for i in VALS:
-    models.append( torch.load(f"model{i}-{i+STEP}.pth").cpu() )
-    noises.append( torch.randn(4, 64, 64) / exp(i) )
+    models.append( torch.load(f"model{i}-{i+STEP}.pth") )
 
-def show_images(img, typ=0):
+
+def show_images(img):
     
-    #for i in [8,9,10]:
-    #    noises[i] = torch.randn(3, 64, 64) / exp(VALS[i])
-    
-    for i, v in enumerate(VALS): # enumerate?
-        img = img + noises[i]
-        img = models[i](img.unsqueeze(0), types[typ].unsqueeze(0))[0]
-        #plt.imshow(img.detach().permute(1, 2, 0))
-        #plt.show() 
+    for i, v in enumerate(VALS):
+        noise = torch.randn(3, 64, 64, device="cuda") / exp(v)
+        img = img + noise
+        img = models[i](img.unsqueeze(0), 0)[0]
+        #plot_image(img)
         
-    utils.save_image(img, f"{time.time()}.png")
-    plt.imshow(img.detach().permute(1, 2, 0))
-    plt.show()
+    save_image(img, f"testHSV/{time.time()}.png")
+    plot_image(img)
     
 # In[]:
 
-#img = Image.open("fenk.png").convert('RGB')
+#img = Image.open("fenk.png").convert('RGBA')
 #img = transform(img)
-img = pimages[1,260]
+#img[0] *= img[3]
+#img[1] *= img[3]
+#img[2] *= img[3]
 
-#plt.imshow(img.detach().permute(1, 2, 0))
-#plt.show()
 
-typ = randint(0,350)
+#img = torch.zeros(4,64,64)
 
-show_images(img, typ=typ)
+for i in tqdm(range(1000)):
+    img = pimages[1,randint(0,385)]
+    #plot_image(img)
+    show_images(img)
+    
+    
+    
+    
+    
+# In[]
+
+import os
+
+L = [f"model{i}-{i+STEP}.pth" for i in VALS]
+
+for l in L:
+    os.rename(l, "./models/" + ? + "/" + l)
+    

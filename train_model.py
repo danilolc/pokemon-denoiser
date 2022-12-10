@@ -9,31 +9,21 @@ import numpy as np
 
 from tqdm import tqdm
 from random import randint
-import matplotlib.pyplot as plt
 
-from load_dataset import load_dataset, load_types
+from load_dataset import load_dataset, load_types, plot_image
 from auto_encoder import PAutoE
 
-pimages = load_dataset().to("cuda")
-pimages[:,:,0] *= pimages[:,:,3]
-pimages[:,:,1] *= pimages[:,:,3]
-pimages[:,:,2] *= pimages[:,:,3]
+pimages = load_dataset().to("cuda") # HSV
+pimages = pimages[:,:,1:] # Remove H
 
 #VALS = [-3.0, -2.5, -2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.0]
 
 STEP = 0.25
 VALS = np.arange(3, -3, -STEP)
 
-plt.imshow(pimages[0][251].cpu().detach().permute(1, 2, 0))
-plt.show()
-
 types = load_types().to("cuda")
 
-def plot_image(im):
-    alpha = 1 - im[3]
-    im = im[0:3] + alpha
-    plt.imshow(im.clamp(0,1).cpu().detach().permute(1, 2, 0))
-    plt.show()
+
 
 for i in VALS:
     
@@ -79,12 +69,11 @@ for i in VALS:
         if j % 1000 == 0:
             source = randint(0, 384)
             image = pimages[1][source]
-            plot_image(image)
+            plot_image(image, h=0)
             image = image + torch.randn(image.size(), device="cuda") / n1
-            plot_image(image)
+            plot_image(image, h=0)
             typ = types[source]
             timage = model(image.unsqueeze(0), typ.unsqueeze(0))[0]
-            plot_image(timage)
-    
+            plot_image(timage, h=0)
 
     torch.save(model, f"model{i}-{i+STEP}.pth")
