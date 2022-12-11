@@ -4,13 +4,12 @@
 import torch
 from torchvision import transforms
 
-from random import random
 from PIL import Image
 import json
 
 import matplotlib.pyplot as plt
 
-def ten_to_PIL(ten, h=random()):
+def ten_to_PIL(ten, h):
     t = transforms.ToPILImage(mode="HSV")
     
     ten = torch.cat([torch.zeros(1,64,64, device="cuda") + h, ten]) # Add H
@@ -18,41 +17,46 @@ def ten_to_PIL(ten, h=random()):
     ten[2] += 1 - ten[3] # White background
     return t(ten[:3].clamp(0,1))
 
-def plot_image(im, h=random()):
-    im = ten_to_PIL(im)
+
+def plot_image(im, h=0):
+    im = ten_to_PIL(im, h=h)
     
     plt.imshow(im)
     plt.show()
+
     
-def save_image(im, path, h=random()):
-    im = ten_to_PIL(im)
+def save_image(im, path, h=0):
+    im = ten_to_PIL(im, h=h)
     
     im.convert("RGB").save(path)
+
+    
+def load_image(path):
+    
+    transform = transforms.ToTensor()
+    
+    img = Image.open(path).convert("RGBA")
+    hsv = img.convert("HSV")
+    
+    hsv = transform(hsv)
+    alpha = transform(img)[3]
+    
+    hsv[0] *= alpha
+    hsv[1] *= alpha
+    hsv[2] *= alpha
+    
+    return torch.cat([hsv, alpha.unsqueeze(0)]) 
+
 
 def load_dataset():
     
     PATH = "./dataset/"
     PATH = "/home/danilo/Downloads/spritesA/"
     
-    transform = transforms.ToTensor()
-    
     def load_images(path):
         ten = []
         for i in range(386):
-            img = Image.open(path + f"{i+1}.png").convert("RGBA")
-            hsv = img.convert("HSV")
-            
-            hsv = transform(hsv)
-            alpha = transform(img)[3]
-            
-            hsv[0] *= alpha
-            hsv[1] *= alpha
-            hsv[2] *= alpha
-            
-            
-            img = torch.cat([hsv, alpha.unsqueeze(0)])
-            
-            ten.append(img)
+            ten.append(load_image(path + f"{i+1}.png"))
         
         return torch.stack(ten)
         

@@ -7,68 +7,54 @@ Created on Sun Dec  4 13:47:15 2022
 """
 
 import torch
-from random import randint
-from tqdm import tqdm
+from torchvision import utils
+from random import randint, random
 from math import exp
 import numpy as np
 
-from random import randint, random
-
-
-from PIL import Image
+import matplotlib.pyplot as plt
 
 import time
 
-from load_dataset import load_types, load_dataset, plot_image, save_image
+from load_dataset import *
+
+STEP = 0.25
+VALS = np.arange(-1.5, 3, STEP)
 
 pimages = load_dataset().to("cuda") # HSV
 pimages = pimages[:,:,1:] # Remove H
 
-STEP = 0.25
-VALS = np.arange(-2.75, 3, STEP)
+PATH = "."
+PATH = "./models/hsv1/"
 
-models = []
-for i in VALS:
-    models.append( torch.load(f"model{i}-{i+STEP}.pth") )
-
+files = [PATH+f"model{i}-{i+STEP}.pt" for i in VALS]
+models = [torch.jit.load(n).eval() for n in files]
 
 def show_images(img):
     
     for i, v in enumerate(VALS):
-        noise = torch.randn(3, 64, 64, device="cuda") / exp(v)
+        noise = torch.randn(img.size(), device="cuda") / exp(v)
         img = img + noise
         img = models[i](img.unsqueeze(0), 0)[0]
-        #plot_image(img)
+        #plot_image(img, h=0.3)
         
-    save_image(img, f"testHSV/{time.time()}.png")
-    plot_image(img)
+    plot_image(img, h=random())
+        
+    #save_image(img, f"{time.time()}.png", h=random())
     
 # In[]:
 
-#img = Image.open("fenk.png").convert('RGBA')
-#img = transform(img)
-#img[0] *= img[3]
-#img[1] *= img[3]
-#img[2] *= img[3]
-
-
-#img = torch.zeros(4,64,64)
-
-for i in tqdm(range(1000)):
+for i in range(50):
+    img = load_image("fenk.png").to("cuda")
+    img = img[1:] # Remove H
+    #img = torch.ones(3,64,64, device="cuda")
     img = pimages[1,randint(0,385)]
-    #plot_image(img)
     show_images(img)
-    
-    
-    
-    
     
 # In[]
 
 import os
 
-L = [f"model{i}-{i+STEP}.pth" for i in VALS]
-
-for l in L:
+for l in files:
     os.rename(l, "./models/" + ? + "/" + l)
     

@@ -16,14 +16,10 @@ from auto_encoder import PAutoE
 pimages = load_dataset().to("cuda") # HSV
 pimages = pimages[:,:,1:] # Remove H
 
-#VALS = [-3.0, -2.5, -2.0, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3.0]
-
-STEP = 0.25
-VALS = np.arange(3, -3, -STEP)
+STEP = 0.1
+VALS = np.arange(-3, 4, STEP)
 
 types = load_types().to("cuda")
-
-
 
 for i in VALS:
     
@@ -76,4 +72,7 @@ for i in VALS:
             timage = model(image.unsqueeze(0), typ.unsqueeze(0))[0]
             plot_image(timage, h=0)
 
-    torch.save(model, f"model{i}-{i+STEP}.pth")
+    script = torch.jit.script(model)
+    script.save(f"model{i}-{i+STEP}.pt")
+    
+    
