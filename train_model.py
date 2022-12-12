@@ -14,10 +14,10 @@ from load_dataset import load_dataset, load_types, plot_image
 from auto_encoder import PAutoE
 
 pimages = load_dataset().to("cuda") # HSV
-pimages = pimages[:,:,1:] # Remove H
 
-STEP = 0.1
-VALS = np.arange(-3, 4, STEP)
+STEP = 0.25
+VALS = np.arange(1.75, -3, -STEP)
+VALS = [2.5]
 
 types = load_types().to("cuda")
 
@@ -27,9 +27,11 @@ for i in VALS:
     n2 = exp(i + STEP)
     
     model = PAutoE().to("cuda")
-    loss_func = nn.L1Loss()
-    #loss_func = nn.MSELoss()
-    optimizer = optim.SGD(model.parameters(), lr=2e-1)
+    #loss_func = nn.L1Loss()
+    loss_func = nn.MSELoss()
+    
+    optimizer = optim.SGD(model.parameters(), lr=3e-2)
+    #optimizer = optim.LBFGS(model.parameters(), history_size=20)
     
     pbar = tqdm(range(20001))
     def closure():
@@ -37,7 +39,7 @@ for i in VALS:
     
         source = randint(0, 2)
     
-        batch_size = 8
+        batch_size = 4
         batch = torch.randperm(385)[:batch_size]
     
         img = pimages[source][batch]

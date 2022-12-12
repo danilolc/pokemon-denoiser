@@ -8,14 +8,26 @@ from PIL import Image
 import json
 
 import matplotlib.pyplot as plt
+import numpy as np
+
+MEAN = np.array([0.1264, 0.2050, 0.3135])
+STD = np.array([0.2522, 0.3451, 0.4639])
+
+iMEAN = -MEAN / STD
+iSTD = 1 / STD
 
 def ten_to_PIL(ten, h):
-    t = transforms.ToPILImage(mode="HSV")
+    toPIL = transforms.ToPILImage(mode="HSV")
+    
+    denormalize = transforms.Normalize(iMEAN, iSTD)
+    ten = denormalize(ten)
     
     ten = torch.cat([torch.zeros(1,64,64, device="cuda") + h, ten]) # Add H
 
     ten[2] += 1 - ten[3] # White background
-    return t(ten[:3].clamp(0,1))
+    ten = ten[:3]
+    
+    return toPIL(ten.clamp(0,1))
 
 
 def plot_image(im, h=0):
@@ -33,19 +45,24 @@ def save_image(im, path, h=0):
     
 def load_image(path):
     
-    transform = transforms.ToTensor()
+    toTensor = transforms.ToTensor()
     
     img = Image.open(path).convert("RGBA")
     hsv = img.convert("HSV")
     
-    hsv = transform(hsv)
-    alpha = transform(img)[3]
+    hsv = toTensor(hsv)
+    alpha = toTensor(img)[3]
     
     hsv[0] *= alpha
     hsv[1] *= alpha
     hsv[2] *= alpha
     
-    return torch.cat([hsv, alpha.unsqueeze(0)]) 
+    hsv = torch.cat([hsv[1:], alpha.unsqueeze(0)]) # Remove H and add alpha
+    
+    normalize = transforms.Normalize(MEAN, STD)
+    hsv = normalize(hsv)
+    
+    return hsv
 
 
 def load_dataset():
