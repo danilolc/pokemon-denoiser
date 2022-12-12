@@ -19,12 +19,12 @@ import time
 from load_dataset import *
 
 STEP = 0.25
-VALS = np.arange(-2, 3, STEP)
+VALS = np.arange(-2.75, 3, STEP)
 
 pimages = load_dataset().to("cuda") # HSV
 
-#PATH = "./"
-PATH = "./models/hsv3/"
+PATH = "./"
+PATH = "./models/alpha2/"
 
 files = [PATH+f"model{i}-{i+STEP}.pt" for i in VALS]
 models = [torch.jit.load(n).eval() for n in files]
@@ -35,7 +35,7 @@ def show_images(img):
         noise = torch.randn(img.size(), device="cuda") / exp(v)
         img = img + noise
         img = models[i](img.unsqueeze(0), 0)[0]
-        plot_image(img, h=0.3)
+        #plot_image(img, h=0.3)
         
     plot_image(img, h=random())
         
@@ -43,7 +43,7 @@ def show_images(img):
     
 # In[]:
 
-#for i in range(25):
+for i in range(30):
     #img = load_image("fenk.png").to("cuda")
     #img = img[1:] # Remove H
     #img = torch.ones(3,64,64, device="cuda")

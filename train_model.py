@@ -13,11 +13,11 @@ from random import randint
 from load_dataset import load_dataset, load_types, plot_image
 from auto_encoder import PAutoE
 
-pimages = load_dataset().to("cuda") # HSV
+pimages = load_dataset().to("cuda")
 
 STEP = 0.25
-VALS = np.arange(1.75, -3, -STEP)
-VALS = [2.5]
+VALS = np.arange(3, -3, -STEP)
+#VALS = [-2.5]
 
 types = load_types().to("cuda")
 
@@ -26,7 +26,7 @@ for i in VALS:
     n1 = exp(i)
     n2 = exp(i + STEP)
     
-    model = PAutoE().to("cuda")
+    model = PAutoE(4,4).to("cuda")
     #loss_func = nn.L1Loss()
     loss_func = nn.MSELoss()
     
