@@ -17,7 +17,7 @@ pimages = load_dataset().to("cuda")
 
 STEP = 0.25
 VALS = np.arange(3, -3, -STEP)
-#VALS = [-2.5]
+VALS = [-3.0]
 
 types = load_types().to("cuda")
 

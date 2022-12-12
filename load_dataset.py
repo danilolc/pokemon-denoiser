@@ -131,7 +131,7 @@ def load_dataset():
     
     return torch.stack([emerald, frlg, rs])
 
-def load_types():
+def load_types(): # Get color and body type
     with open("types.json") as f:
         types = json.load(f)
         types = [t["english"] for t in types]
@@ -140,7 +140,7 @@ def load_types():
         pokemons = json.load(f)
         pokemons = [t["type"] for t in pokemons]
     
-    type_tensors = [[float(t in pokemons[i]) for t in types] for i in range(386)]
+    type_tensors = [types.index(pokemons[i][0]) for i in range(386)]
     
     return torch.tensor(type_tensors)
     
