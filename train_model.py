@@ -16,8 +16,7 @@ from auto_encoder import PAutoE
 pimages = load_dataset().to("cuda")
 
 STEP = 0.25
-VALS = np.arange(3, -3, -STEP)
-VALS = [-3.0]
+VALS = np.arange(2.75, -3, -STEP)
 
 types = load_types().to("cuda")
 
@@ -33,7 +32,7 @@ for i in VALS:
     optimizer = optim.SGD(model.parameters(), lr=3e-2)
     #optimizer = optim.LBFGS(model.parameters(), history_size=20)
     
-    pbar = tqdm(range(20001))
+    pbar = tqdm(range(30001))
     def closure():
         optimizer.zero_grad()
     
@@ -62,7 +61,10 @@ for i in VALS:
         
     model.train()
     for j in pbar:
-        optimizer.step(closure) 
+        optimizer.step(closure)
+        
+        if j % 5000 == 0:
+            print("A")
         
         if j % 1000 == 0:
             source = randint(0, 384)
@@ -71,7 +73,7 @@ for i in VALS:
             image = image + torch.randn(image.size(), device="cuda") / n1
             plot_image(image, h=0)
             typ = types[source]
-            timage = model(image.unsqueeze(0), typ.unsqueeze(0))[0]
+            timage = model(image[None], typ[None])[0]
             plot_image(timage, h=0)
 
     script = torch.jit.script(model)
