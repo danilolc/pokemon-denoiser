@@ -28,7 +28,8 @@ class DoubleConv(nn.Module):
         if self.residual:
             return F.gelu(x + self.double_conv(x))
         else:
-            return F.gelu(self.double_conv(x)) # gelu?
+            return self.double_conv(x) # gelu?
+            #return F.gelu(self.double_conv(x)) # gelu?
 
 
 class TConv(nn.Module):
