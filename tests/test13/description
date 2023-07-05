@@ -1,0 +1,9 @@
+RGBA Noise modeling
+beta = linspace(10e-4, 0.05, 100)
+
+SGD LR = 5e-2, 15000 iterations for each t
+
+One Pool UNET
+One UNET per t
+
+Tests starting with Trecko and varying T
