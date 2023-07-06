@@ -1,0 +1,9 @@
+RGBA Noise modeling
+beta = linspace(10e-4, 0.1, 50)
+
+Adam LR = 1e-3, 10000 iterations for each t
+
+Two Pool UNET
+One UNET per t
+
+Tests starting with random Pokémon and varying T

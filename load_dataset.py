@@ -11,9 +11,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 PATH = "./dataset/"
+MODE = "RGB"
 
 def ten_to_RGB(ten):
-    toPIL = transforms.ToPILImage(mode="RGBA")
+    toPIL = transforms.ToPILImage(mode=MODE)
     
     # [-1, 1] -> [0, 1]
     ten = (ten + 1) / 2
@@ -42,11 +43,18 @@ def load_image_RGB(path):
     
     alpha = img[3]
     
-    # Set RGB = 0 when transparent
-    img[0] *= alpha
-    img[1] *= alpha
-    img[2] *= alpha
-
+    if (MODE == "RGBA"):
+        # Set RGB = 0 when transparent
+        img[0] *= alpha
+        img[1] *= alpha
+        img[2] *= alpha
+    if (MODE == "RGB"):
+        # Set white when transparent
+        img[0] += 1 - alpha
+        img[1] += 1 - alpha
+        img[2] += 1 - alpha
+        img = img[0:3]
+        
     # [0, 1] -> [-1, 1]
     img = img * 2.0 - 1
     

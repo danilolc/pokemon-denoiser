@@ -1,0 +1,11 @@
+RGB Noise modeling
+beta = linspace(10e-4, 0.3, 50)
+
+Adam LR = 1e-3, 7000 iterations for each t
+
+Two Pool UNET
+One UNET per t
+
+Tests starting with random Pokémon starting with T = 40
+
+(maybe more iterations?)

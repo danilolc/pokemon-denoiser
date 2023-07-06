@@ -1,0 +1,7 @@
+RGBA Noise modeling
+beta = linspace(10e-4, 0.2, 30)
+
+Adam LR = 1e-3, 10000 iterations for each t
+
+One Pool UNET
+One UNET per t

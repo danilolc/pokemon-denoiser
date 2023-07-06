@@ -48,7 +48,11 @@ class PAutoE(nn.Module):
     def __init__(self, in_c=3, out_c=3):
         super().__init__()
         
+        self.pool = nn.MaxPool2d(2)
+        
         self.convs1 = nn.Sequential(
+            
+            #nn.ChannelShuffle()
 
             #PixelSight
             nn.Conv2d(in_c, 16, kernel_size=1),
@@ -57,29 +61,46 @@ class PAutoE(nn.Module):
             DoubleConv(16, 16),
             DoubleConv(16, 16, residual=True),
         
-        )
-        
-        self.pool = nn.MaxPool2d(2)
+        ) # 16 --->
 
         self.convs2 = nn.Sequential(
 
             DoubleConv(16, 32),
             DoubleConv(32, 32, residual=True),
         
-        )
+        ) # 32 --->
+        
+        self.convs3 = nn.Sequential(
+
+            DoubleConv(32, 64),
+            DoubleConv(64, 64, residual=True),
+        
+        ) # 64
 
         ######
          
-        self.tconv = nn.Sequential(
+        self.tconv1 = nn.Sequential(
 
-            DoubleConv(32, 32),
+            TConv(64, 64),
+            nn.ReLU(),
+
+        )
+        
+        self.convs4 = nn.Sequential(
+
+            DoubleConv(64 + 32, 32),
             DoubleConv(32, 32, residual=True),
+        
+        )
+        
+        self.tconv2 = nn.Sequential(
 
             TConv(32, 32),
             nn.ReLU(),
+            
         )
                 
-        self.convs3 = nn.Sequential(
+        self.convs5 = nn.Sequential(
 
             DoubleConv(32 + 16, 16),
             DoubleConv(16, 16, residual=True),
@@ -95,12 +116,16 @@ class PAutoE(nn.Module):
         
         x1 = self.pool(x)
         x1 = self.convs2(x1)
-        
-        #####
-        
-        x1 = self.tconv(x1)
-        x = cat([x1, x], dim=1)
 
-        x = self.convs3(x)
+        x2 = self.pool(x1)
+        x2 = self.convs3(x2)
+        
+        ####
+        
+        x2 = self.tconv1(x2)
+        x2 = self.convs4(cat([x1, x2], dim=1))
+        
+        x2 = self.tconv2(x2)
+        x2 = self.convs5(cat([x, x2], dim=1))
 
-        return x 
+        return x2
