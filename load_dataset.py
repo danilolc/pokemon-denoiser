@@ -31,6 +31,7 @@ def plot_image(im, h=0):
 
 def save_image(im, path, h=0):
     im = ten_to_RGB(im)
+    
     im.convert("RGBA").save(path)
 
 
@@ -43,11 +44,11 @@ def load_image_RGB(path):
     
     alpha = img[3]
     
-    if (MODE == "RGBA"):
-        # Set RGB = 0 when transparent
-        img[0] *= alpha
-        img[1] *= alpha
-        img[2] *= alpha
+    # Set RGB = 0 when transparent
+    img[0] *= alpha
+    img[1] *= alpha
+    img[2] *= alpha
+    
     if (MODE == "RGB"):
         # Set white when transparent
         img[0] += 1 - alpha

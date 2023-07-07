@@ -51,14 +51,12 @@ class PAutoE(nn.Module):
         self.pool = nn.MaxPool2d(2)
         
         self.convs1 = nn.Sequential(
-            
-            #nn.ChannelShuffle()
 
             #PixelSight
-            nn.Conv2d(in_c, 16, kernel_size=1),
-            nn.ReLU(),
+            #nn.Conv2d(in_c, 16, kernel_size=2, padding="same"),
+            #nn.ReLU(),
         
-            DoubleConv(16, 16),
+            DoubleConv(in_c, 16),
             DoubleConv(16, 16, residual=True),
         
         ) # 16 --->
@@ -105,7 +103,6 @@ class PAutoE(nn.Module):
             DoubleConv(32 + 16, 16),
             DoubleConv(16, 16, residual=True),
             
-            #PixelSight
             nn.Conv2d(16, out_c, kernel_size=1),
 
         )

@@ -1,0 +1,10 @@
+RGB (swap channels) Noise modeling
+beta = linspace(1e-4, 0.1, 150)
+
+Adam LR = 1e-3, 15000 iterations for each t
+
+Two Pool UNET (no pixel sight)
+One UNET per t
+
+Tests starting with random Pokémon with T = 150
+
