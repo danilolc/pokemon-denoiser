@@ -39,8 +39,8 @@ def load_image_RGB(path):
     
     toTensor = transforms.ToTensor()
     
-    img = Image.open(path).convert("RGBA")
-    img = toTensor(img)
+    img = Image.open(path)
+    img = toTensor(img.convert("RGBA"))
     
     alpha = img[3]
     
@@ -57,7 +57,7 @@ def load_image_RGB(path):
         img = img[0:3]
         
     # [0, 1] -> [-1, 1]
-    img = img * 2.0 - 1
+    img = (img * 2) - 1
     
     return img
 

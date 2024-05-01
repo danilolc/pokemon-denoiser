@@ -2,7 +2,7 @@
 
 ![treecko](tests/test/result.png?raw=true)
 
-It also can sample blobs with [Diffusion Model](https://arxiv.org/abs/2006.11239):
+It also can sample blobs from dataset with [Diffusion Model](https://arxiv.org/abs/2006.11239):
 
 ![t1](tests/test19/71.png?raw=true)
 ![t2](tests/test19/67.png?raw=true)
