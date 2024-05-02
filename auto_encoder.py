@@ -100,22 +100,22 @@ class PAutoE(nn.Module):
         )
         
     def forward(self, x, ty):
-        ty = self.emb(ty)
+        #ty = self.emb(ty)
         
         x = self.convs1(x)
         x1 = self.pool(x)
         
-        ty1 = self.emb1(ty)[:, :, None, None]
-        ty1 = ty1.repeat(1, 1, x1.shape[-2], x1.shape[-1])
-        x1 += ty1
+        #ty1 = self.emb1(ty)[:, :, None, None]
+        #ty1 = ty1.repeat(1, 1, x1.shape[-2], x1.shape[-1])
+        #x1 += ty1
         
         x1 = self.convs2(x1)        
         x1 = self.tconv(x1)
         x = cat([x1, x], dim=1)
         
-        ty2 = self.emb2(ty)[:, :, None, None]
-        ty2 = ty2.repeat(1, 1, x.shape[-2], x.shape[-1])
-        x += ty2
+        #ty2 = self.emb2(ty)[:, :, None, None]
+        #ty2 = ty2.repeat(1, 1, x.shape[-2], x.shape[-1])
+        #x += ty2
 
         x = self.convs3(x)
 
