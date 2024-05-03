@@ -5,7 +5,8 @@ import torch.nn.functional as F
 # https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/LICENSE
 
 #ED = 256
-ED = 8
+#ED = 8
+ED = 32
 
 def pos_encoding(t, channels):
     inv_freq = 1.0 / (

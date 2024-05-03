@@ -22,14 +22,14 @@ def ten_to_RGB(ten):
     return toPIL(ten.clamp(0,1))
 
 
-def plot_image(im, h=0):
+def plot_image(im, axes=plt):
     im = ten_to_RGB(im)
     
-    plt.imshow(im)
-    plt.show()
+    axes.imshow(im)
+    #axes.show()
 
 
-def save_image(im, path, h=0):
+def save_image(im, path):
     im = ten_to_RGB(im)
     
     im.convert("RGBA").save(path)
@@ -39,8 +39,8 @@ def load_image_RGB(path):
     
     toTensor = transforms.ToTensor()
     
-    img = Image.open(path).convert("RGBA")
-    img = toTensor(img)
+    img = Image.open(path)
+    img = toTensor(img.convert("RGBA"))
     
     alpha = img[3]
     
@@ -57,7 +57,7 @@ def load_image_RGB(path):
         img = img[0:3]
         
     # [0, 1] -> [-1, 1]
-    img = img * 2.0 - 1
+    img = (img * 2) - 1
     
     return img
 
