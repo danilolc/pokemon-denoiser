@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 #ED = 256
 #ED = 8
-ED = 32
+ED = 128
 
 def pos_encoding(t, channels):
     inv_freq = 1.0 / (
@@ -117,24 +117,31 @@ class UNet(nn.Module):
         self.time_dim = time_dim
 
         self.inc = nn.Sequential(
-            nn.Conv2d(c_in, 16, kernel_size=1),
-            DoubleConv(16, 16),
+            nn.Conv2d(c_in, 8, kernel_size=1),
+            #DoubleConv(3, 8),
         )
         
-        self.down1 = Down(16, 32)
-        self.sa1 = SelfAttention(32)
-        self.down2 = Down(32, 64)
-        self.sa2 = SelfAttention(64)
+        self.down1 = Down(8, 16)
+        self.sa1 = SelfAttention(16)
+        self.down2 = Down(16, 32)
+        self.sa2 = SelfAttention(32)
+        self.down3 = Down(32, 64)
+        self.sa3 = SelfAttention(64)
 
         self.bot1 = DoubleConv(64, 64)
         self.bot2 = DoubleConv(64, 64)
 
-        self.up1 = Up(32+64, 32)
+        self.up1 = Up(32 + 64, 32)
         self.sa4 = SelfAttention(32)
-        self.up2 = Up(16+32, 16)
+        self.up2 = Up(16 + 32, 16)
         self.sa5 = SelfAttention(16)
+        self.up3 = Up( 8 + 16, 8)
+        self.sa6 = SelfAttention(8)
         
-        self.outc = nn.Conv2d(16, c_out, kernel_size=1)
+        self.outc = nn.Sequential(
+            #DoubleConv(8, 3),
+            nn.Conv2d(8, c_out, kernel_size=1),
+        )
 
 
 
@@ -146,14 +153,18 @@ class UNet(nn.Module):
         x2 = self.sa1(x2)
         x3 = self.down2(x2, t)
         x3 = self.sa2(x3)
+        x4 = self.down3(x3, t)
+        x4 = self.sa3(x4)
 
-        x3 = self.bot1(x3)
-        x3 = self.bot2(x3)
+        x4 = self.bot1(x4)
+        x4 = self.bot2(x4)
 
-        x = self.up1(x3, x2, t)
+        x = self.up1(x4, x3, t)
         x = self.sa4(x)
-        x = self.up2(x, x1, t)
+        x = self.up2(x, x2, t)
         x = self.sa5(x)
+        x = self.up3(x, x1, t)
+        x = self.sa6(x)
 
         return self.outc(x)
     

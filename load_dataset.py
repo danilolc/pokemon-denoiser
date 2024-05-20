@@ -5,19 +5,22 @@ import torch
 from torchvision import transforms
 
 from PIL import Image
-import json
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 PATH = "./dataset/"
 MODE = "RGB"
+
+IM = torch.tensor([0.8673, 0.8465, 0.8217])
+IS = torch.tensor([0.2610, 0.2755, 0.3120])
 
 def ten_to_RGB(ten):
     toPIL = transforms.ToPILImage(mode=MODE)
     
     # [-1, 1] -> [0, 1]
-    ten = (ten + 1) / 2
+    #ten = (ten + 1) / 2
+    ten *= IS[:, None, None].to(ten.device)
+    ten += IM[:, None, None].to(ten.device)
 
     return toPIL(ten.clamp(0,1))
 
@@ -26,7 +29,6 @@ def plot_image(im, axes=plt):
     im = ten_to_RGB(im)
     
     axes.imshow(im)
-    #axes.show()
 
 
 def save_image(im, path):
@@ -57,7 +59,9 @@ def load_image_RGB(path):
         img = img[0:3]
         
     # [0, 1] -> [-1, 1]
-    img = (img * 2) - 1
+    #img = (img * 2) - 1
+    img -= IM[:, None, None]
+    img /= IS[:, None, None]
     
     return img
 
@@ -75,5 +79,5 @@ def load_dataset():
     emerald = load_images(PATH + "emerald/")
     frlg = load_images(PATH + "frlg/")
     rs = load_images(PATH + "rs/")
-    
+
     return torch.stack([emerald, frlg, rs])
