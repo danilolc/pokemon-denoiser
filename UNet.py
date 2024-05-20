@@ -4,9 +4,7 @@ import torch.nn.functional as F
 
 # https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/LICENSE
 
-#ED = 256
-#ED = 8
-ED = 128
+ED = 256
 
 def pos_encoding(t, channels):
     inv_freq = 1.0 / (
@@ -117,30 +115,30 @@ class UNet(nn.Module):
         self.time_dim = time_dim
 
         self.inc = nn.Sequential(
-            nn.Conv2d(c_in, 8, kernel_size=1),
-            #DoubleConv(3, 8),
+            nn.Conv2d(c_in, 16, kernel_size=1),
+            DoubleConv(16, 16),
         )
         
-        self.down1 = Down(8, 16)
-        self.sa1 = SelfAttention(16)
-        self.down2 = Down(16, 32)
-        self.sa2 = SelfAttention(32)
-        self.down3 = Down(32, 64)
-        self.sa3 = SelfAttention(64)
+        self.down1 = Down(16, 32)
+        self.sa1 = SelfAttention(32)
+        self.down2 = Down(32, 64)
+        self.sa2 = SelfAttention(64)
+        self.down3 = Down(64, 128)
+        self.sa3 = SelfAttention(128)
 
-        self.bot1 = DoubleConv(64, 64)
-        self.bot2 = DoubleConv(64, 64)
+        self.bot1 = DoubleConv(128, 128)
+        self.bot2 = DoubleConv(128, 128)
 
-        self.up1 = Up(32 + 64, 32)
-        self.sa4 = SelfAttention(32)
-        self.up2 = Up(16 + 32, 16)
-        self.sa5 = SelfAttention(16)
-        self.up3 = Up( 8 + 16, 8)
-        self.sa6 = SelfAttention(8)
+        self.up1 = Up(64 + 128, 64)
+        self.sa4 = SelfAttention(64)
+        self.up2 = Up(32 + 64, 32)
+        self.sa5 = SelfAttention(32)
+        self.up3 = Up( 16 + 32, 16)
+        self.sa6 = SelfAttention(16)
         
         self.outc = nn.Sequential(
-            #DoubleConv(8, 3),
-            nn.Conv2d(8, c_out, kernel_size=1),
+            DoubleConv(16, 16),
+            nn.Conv2d(16, c_out, kernel_size=1),
         )
 
 
@@ -175,7 +173,7 @@ class UNet(nn.Module):
 
 
 class UNet_conditional(UNet):
-    def __init__(self, c_in=3, c_out=3, time_dim=256, num_classes=None, **kwargs):
+    def __init__(self, c_in=3, c_out=3, time_dim=ED, num_classes=None, **kwargs):
         super().__init__(c_in, c_out, time_dim, **kwargs)
         if num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_dim)

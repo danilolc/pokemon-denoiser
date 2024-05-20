@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 PATH = "./dataset/"
 MODE = "RGB"
 
-IM = torch.tensor([0.8673, 0.8465, 0.8217])
+#IM = torch.tensor([0.8673, 0.8465, 0.8217])
+IM = torch.tensor([0.5, 0.5, 0.5])
 IS = torch.tensor([0.2610, 0.2755, 0.3120])
 
 def ten_to_RGB(ten):
@@ -81,3 +82,19 @@ def load_dataset():
     rs = load_images(PATH + "rs/")
 
     return torch.stack([emerald, frlg, rs])
+
+def load_contour():
+    
+    def load_images(path):
+        ten = []
+        for i in range(386):
+            im = load_image_RGB(path + f"{i+1}.png")
+            ten.append(im)
+        
+        return torch.stack(ten)
+        
+    emerald = load_images(PATH + "emerald_cont/")
+    frlg = load_images(PATH + "emerald_cont/")
+    rs = load_images(PATH + "emerald_cont/")
+
+    return torch.stack([emerald, frlg, rs]).mean(dim=2, keepdim=True)
