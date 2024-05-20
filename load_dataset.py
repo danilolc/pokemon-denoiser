@@ -11,17 +11,8 @@ import matplotlib.pyplot as plt
 PATH = "./dataset/"
 MODE = "RGB"
 
-#IM = torch.tensor([0.8673, 0.8465, 0.8217])
-IM = torch.tensor([0.5, 0.5, 0.5])
-IS = torch.tensor([0.2610, 0.2755, 0.3120])
-
 def ten_to_RGB(ten):
     toPIL = transforms.ToPILImage(mode=MODE)
-    
-    # [-1, 1] -> [0, 1]
-    #ten = (ten + 1) / 2
-    ten *= IS[:, None, None].to(ten.device)
-    ten += IM[:, None, None].to(ten.device)
 
     return toPIL(ten.clamp(0,1))
 
@@ -58,11 +49,6 @@ def load_image_RGB(path):
         img[1] += 1 - alpha
         img[2] += 1 - alpha
         img = img[0:3]
-        
-    # [0, 1] -> [-1, 1]
-    #img = (img * 2) - 1
-    img -= IM[:, None, None]
-    img /= IS[:, None, None]
     
     return img
 
