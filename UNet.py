@@ -133,7 +133,7 @@ class UNet(nn.Module):
         self.sa4 = SelfAttention(64)
         self.up2 = Up(32 + 64, 32)
         self.sa5 = SelfAttention(32)
-        self.up3 = Up( 16 + 32, 16)
+        self.up3 = Up(16 + 32, 16)
         self.sa6 = SelfAttention(16)
         
         self.outc = nn.Sequential(
