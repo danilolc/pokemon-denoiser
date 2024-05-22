@@ -1,4 +1,6 @@
 .ipynb_checkpoints
 __pycache__
-*model*
+/models
+model/
+old_model/*.png
 /*.png
