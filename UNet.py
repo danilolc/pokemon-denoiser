@@ -134,32 +134,32 @@ class UNet(nn.Module):
         self.time_dim = time_dim
 
         self.inc = nn.Sequential(
-            nn.Conv2d(c_in, 16, kernel_size=1),
-            DoubleConv(16, 16),
+            nn.Conv2d(c_in, 32, kernel_size=1),
+            DoubleConv(32, 32),
         )
         
-        self.down1 = Down(16, 32)
-        self.sa1 = SelfAttention(32)
-        self.down2 = Down(32, 64)
-        self.sa2 = SelfAttention(64)
-        self.down3 = Down(64, 128)
-        self.sa3 = SelfAttention(128)
+        self.down1 = Down(32, 64)
+        self.sa1 = SelfAttention(64)
+        self.down2 = Down(64, 128)
+        self.sa2 = SelfAttention(128)
+        self.down3 = Down(128, 256)
+        self.sa3 = SelfAttention(256)
 
         self.bot = nn.Sequential(
-            DoubleConv(128, 128, residual=True),
-            DoubleConv(128, 128),
+            DoubleConv(256, 256, residual=True),
+            DoubleConv(256, 256),
         )
 
-        self.up1 = Up(128, 64, 64)
-        self.sa4 = SelfAttention(64)
-        self.up2 = Up(64, 32, 32)
-        self.sa5 = SelfAttention(32)
-        self.up3 = Up(32, 16, 16)
-        self.sa6 = SelfAttention(16)
+        self.up1 = Up(256, 128, 128)
+        self.sa4 = SelfAttention(128)
+        self.up2 = Up(128, 64, 64)
+        self.sa5 = SelfAttention(64)
+        self.up3 = Up(64, 32, 32)
+        self.sa6 = SelfAttention(32)
         
         self.outc = nn.Sequential(
-            DoubleConv(16, 16),
-            nn.Conv2d(16, c_out, kernel_size=1),
+            DoubleConv(32, 32),
+            nn.Conv2d(32, c_out, kernel_size=1),
         )
 
 
