@@ -60,6 +60,24 @@ class DoubleConv(nn.Module):
             return self.double_conv(x)
 
 
+class TConv(nn.Module):
+    def __init__(self, in_c, out_c):
+        super().__init__()
+        self.tconv = nn.Sequential(
+
+            nn.ConvTranspose2d(in_c, out_c,
+                               kernel_size=3, 
+                               stride=2, 
+                               padding=1, 
+                               output_padding=1),
+            nn.GroupNorm(1, out_c),
+            nn.GELU(),
+
+        )
+
+    def forward(self, x):
+        return self.tconv(x)
+
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, emb_dim=ED):
         super().__init__()
@@ -84,13 +102,13 @@ class Down(nn.Module):
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim=ED):
+    def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED):
         super().__init__()
 
-        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up = TConv(in_channels, in_channels)
         self.conv = nn.Sequential(
-            DoubleConv(in_channels, in_channels, residual=True),
-            DoubleConv(in_channels, out_channels, in_channels // 2),
+            DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
+            DoubleConv(skip_channels + in_channels, out_channels),
         )
 
         self.emb_layer = nn.Sequential(
@@ -126,14 +144,16 @@ class UNet(nn.Module):
         self.down3 = Down(64, 128)
         self.sa3 = SelfAttention(128)
 
-        self.bot1 = DoubleConv(128, 128)
-        self.bot2 = DoubleConv(128, 128)
+        self.bot = nn.Sequential(
+            DoubleConv(128, 128, residual=True),
+            DoubleConv(128, 128),
+        )
 
-        self.up1 = Up(64 + 128, 64)
+        self.up1 = Up(128, 64, 64)
         self.sa4 = SelfAttention(64)
-        self.up2 = Up(32 + 64, 32)
+        self.up2 = Up(64, 32, 32)
         self.sa5 = SelfAttention(32)
-        self.up3 = Up(16 + 32, 16)
+        self.up3 = Up(32, 16, 16)
         self.sa6 = SelfAttention(16)
         
         self.outc = nn.Sequential(
@@ -154,8 +174,7 @@ class UNet(nn.Module):
         x4 = self.down3(x3, t)
         x4 = self.sa3(x4)
 
-        x4 = self.bot1(x4)
-        x4 = self.bot2(x4)
+        x4 = self.bot(x4)
 
         x = self.up1(x4, x3, t)
         x = self.sa4(x)
