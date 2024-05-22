@@ -105,10 +105,11 @@ class Up(nn.Module):
     def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED):
         super().__init__()
 
-        self.up = TConv(in_channels, in_channels)
+        #self.up = TConv(in_channels, in_channels)
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.conv = nn.Sequential(
             DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            DoubleConv(skip_channels + in_channels, out_channels),
+            DoubleConv(skip_channels + in_channels, out_channels, in_channels),
         )
 
         self.emb_layer = nn.Sequential(
