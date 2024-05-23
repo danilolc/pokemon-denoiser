@@ -136,8 +136,7 @@ class Down(nn.Module):
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
             DoubleConv(in_channels, in_channels, residual=True),
-            DoubleConv(in_channels, in_channels, residual=True),
-            #DoubleConv(in_channels, out_channels),
+            #DoubleConv(in_channels, in_channels, residual=True),
             ASPP(in_channels, out_channels),
         )
 
@@ -148,11 +147,12 @@ class Down(nn.Module):
                 out_channels
             ),
         )
+        self.att = SelfAttention(out_channels)
 
     def forward(self, x, t):
         x = self.maxpool_conv(x)
         emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return x + emb
+        return self.att(x + emb)
 
 
 class Up(nn.Module):
@@ -163,11 +163,9 @@ class Up(nn.Module):
         self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.conv = nn.Sequential(
             DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            #DoubleConv(skip_channels + in_channels, out_channels, in_channels),
+            #DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
             ASPP(skip_channels + in_channels, out_channels),
         )
-
         self.emb_layer = nn.Sequential(
             nn.SiLU(),
             nn.Linear(
@@ -175,13 +173,14 @@ class Up(nn.Module):
                 out_channels
             ),
         )
+        self.att = SelfAttention(out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
         x = torch.cat([skip_x, x], dim=1)
         x = self.conv(x)
         emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return x + emb
+        return self.att(x + emb)
 
 
 class UNet(nn.Module):
@@ -189,18 +188,17 @@ class UNet(nn.Module):
         super().__init__()
         self.time_dim = time_dim
 
-        self.inc = nn.Sequential(
+        self.enc = nn.Sequential(
             nn.Conv2d(c_in, 16, kernel_size=1),
-            #DoubleConv(16, 16, residual=True),
-            DoubleConv(16, 16),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
         )
         
         self.down1 = Down(16, 32)
-        self.sa1 = SelfAttention(32)
         self.down2 = Down(32, 64)
-        self.sa2 = SelfAttention(64)
         self.down3 = Down(64, 128)
-        self.sa3 = SelfAttention(128)
 
         self.bot = nn.Sequential(
             DoubleConv(128, 128),
@@ -208,41 +206,32 @@ class UNet(nn.Module):
         )
 
         self.up1 = Up(128, 64, 64)
-        self.sa4 = SelfAttention(64)
         self.up2 = Up(64, 32, 32)
-        self.sa5 = SelfAttention(32)
         self.up3 = Up(32, 16, 16)
-        self.sa6 = SelfAttention(16)
         
-        self.outc = nn.Sequential(
-            DoubleConv(16, 16),
-            #DoubleConv(16, 16, residual=True),
+        self.dec = nn.Sequential(
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
             nn.Conv2d(16, c_out, kernel_size=1),
         )
 
-
-
     def unet_forward(self, x, t):
         
-        x1 = self.inc(x)
+        x1 = self.enc(x)
 
         x2 = self.down1(x1, t)
-        x2 = self.sa1(x2)
         x3 = self.down2(x2, t)
-        x3 = self.sa2(x3)
         x4 = self.down3(x3, t)
-        x4 = self.sa3(x4)
 
         x4 = self.bot(x4)
 
         x = self.up1(x4, x3, t)
-        x = self.sa4(x)
         x = self.up2(x, x2, t)
-        x = self.sa5(x)
         x = self.up3(x, x1, t)
-        x = self.sa6(x)
 
-        return self.outc(x)
+        return self.dec(x)
     
     def forward(self, x, t):
         t = t.unsqueeze(-1)

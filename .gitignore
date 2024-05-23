@@ -4,4 +4,4 @@ __pycache__
 model/
 old_model/*.png
 /*.png
-/model.pt
+*.pt
