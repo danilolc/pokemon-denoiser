@@ -39,6 +39,58 @@ class SelfAttention(nn.Module):
         return attention_value.swapaxes(2, 1).view(-1, self.channels, size, size)
 
 
+class ConvolutionBlock(nn.Module):
+    def __init__(self, in_c, out_c, kernel_size, padding='same', stride=1, dilation=1, bias=True):
+        super().__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_c, out_c, 
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    stride=stride, 
+                    dilation=dilation,
+                    bias=bias),
+            nn.BatchNorm2d(out_c),
+            nn.GELU(),
+        )
+
+    def forward(self, x):
+        return self.conv(x)
+
+class ASPP(nn.Module):
+    def __init__(self, in_c, out_c, residual=False):
+        super().__init__()
+
+        self.residual = residual
+
+        self.conv1 = ConvolutionBlock(in_c, in_c, kernel_size=1)
+        self.conv2 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=6)  # 3
+        self.conv3 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=12) # 6
+        self.conv4 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=18) # 12
+
+        self.conv5 = nn.Sequential(
+            nn.AvgPool2d(8),
+            ConvolutionBlock(in_c, in_c, kernel_size=1),
+            nn.Upsample(scale_factor=8, mode='bilinear'),
+        )
+
+        self.conv6 = ConvolutionBlock(5 * in_c, out_c, kernel_size=1)
+
+    def forward(self, x):
+        x1 = self.conv1(x)
+        x2 = self.conv2(x)
+        x3 = self.conv3(x)
+        x4 = self.conv4(x)
+        x5 = self.conv5(x)
+
+        x6 = torch.cat([x1, x2, x3, x4, x5], dim=1)
+        x6 = self.conv6(x6)
+
+        if self.residual:
+            return x + x6
+        
+        return x6
+
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels=None, residual=False):
         super().__init__()
@@ -84,7 +136,9 @@ class Down(nn.Module):
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
             DoubleConv(in_channels, in_channels, residual=True),
-            DoubleConv(in_channels, out_channels),
+            DoubleConv(in_channels, in_channels, residual=True),
+            #DoubleConv(in_channels, out_channels),
+            ASPP(in_channels, out_channels),
         )
 
         self.emb_layer = nn.Sequential(
@@ -109,7 +163,9 @@ class Up(nn.Module):
         self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.conv = nn.Sequential(
             DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            DoubleConv(skip_channels + in_channels, out_channels, in_channels),
+            DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
+            #DoubleConv(skip_channels + in_channels, out_channels, in_channels),
+            ASPP(skip_channels + in_channels, out_channels),
         )
 
         self.emb_layer = nn.Sequential(
@@ -134,32 +190,34 @@ class UNet(nn.Module):
         self.time_dim = time_dim
 
         self.inc = nn.Sequential(
-            nn.Conv2d(c_in, 32, kernel_size=1),
-            DoubleConv(32, 32),
+            nn.Conv2d(c_in, 16, kernel_size=1),
+            #DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16),
         )
         
-        self.down1 = Down(32, 64)
-        self.sa1 = SelfAttention(64)
-        self.down2 = Down(64, 128)
-        self.sa2 = SelfAttention(128)
-        self.down3 = Down(128, 256)
-        self.sa3 = SelfAttention(256)
+        self.down1 = Down(16, 32)
+        self.sa1 = SelfAttention(32)
+        self.down2 = Down(32, 64)
+        self.sa2 = SelfAttention(64)
+        self.down3 = Down(64, 128)
+        self.sa3 = SelfAttention(128)
 
         self.bot = nn.Sequential(
-            DoubleConv(256, 256, residual=True),
-            DoubleConv(256, 256),
+            DoubleConv(128, 128),
+            DoubleConv(128, 128),
         )
 
-        self.up1 = Up(256, 128, 128)
-        self.sa4 = SelfAttention(128)
-        self.up2 = Up(128, 64, 64)
-        self.sa5 = SelfAttention(64)
-        self.up3 = Up(64, 32, 32)
-        self.sa6 = SelfAttention(32)
+        self.up1 = Up(128, 64, 64)
+        self.sa4 = SelfAttention(64)
+        self.up2 = Up(64, 32, 32)
+        self.sa5 = SelfAttention(32)
+        self.up3 = Up(32, 16, 16)
+        self.sa6 = SelfAttention(16)
         
         self.outc = nn.Sequential(
-            DoubleConv(32, 32),
-            nn.Conv2d(32, c_out, kernel_size=1),
+            DoubleConv(16, 16),
+            #DoubleConv(16, 16, residual=True),
+            nn.Conv2d(16, c_out, kernel_size=1),
         )
 
 
