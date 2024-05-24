@@ -140,7 +140,14 @@ class Down(nn.Module):
             ASPP(in_channels, out_channels),
         )
 
-        self.emb_layer = nn.Sequential(
+        self.emb1_layer = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(
+                emb_dim,
+                out_channels
+            ),
+        )
+        self.emb2_layer = nn.Sequential(
             nn.SiLU(),
             nn.Linear(
                 emb_dim,
@@ -149,10 +156,11 @@ class Down(nn.Module):
         )
         self.att = SelfAttention(out_channels)
 
-    def forward(self, x, t):
+    def forward(self, x, t, u):
         x = self.maxpool_conv(x)
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return self.att(x + emb)
+        emb1 = self.emb1_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        emb2 = self.emb2_layer(u)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        return self.att(x + emb1 + emb2)
 
 
 class Up(nn.Module):
@@ -166,7 +174,14 @@ class Up(nn.Module):
             #DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
             ASPP(skip_channels + in_channels, out_channels),
         )
-        self.emb_layer = nn.Sequential(
+        self.emb1_layer = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(
+                emb_dim,
+                out_channels
+            ),
+        )
+        self.emb2_layer = nn.Sequential(
             nn.SiLU(),
             nn.Linear(
                 emb_dim,
@@ -175,12 +190,13 @@ class Up(nn.Module):
         )
         self.att = SelfAttention(out_channels)
 
-    def forward(self, x, skip_x, t):
+    def forward(self, x, skip_x, t, u):
         x = self.up(x)
         x = torch.cat([skip_x, x], dim=1)
         x = self.conv(x)
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return self.att(x + emb)
+        emb1 = self.emb1_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        emb2 = self.emb2_layer(u)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        return self.att(x + emb1 + emb2)
 
 
 class UNet(nn.Module):
@@ -217,28 +233,32 @@ class UNet(nn.Module):
             nn.Conv2d(16, c_out, kernel_size=1),
         )
 
-    def unet_forward(self, x, t):
+    def unet_forward(self, x, t, u):
         
         x1 = self.enc(x)
 
-        x2 = self.down1(x1, t)
-        x3 = self.down2(x2, t)
-        x4 = self.down3(x3, t)
+        x2 = self.down1(x1, t, u)
+        x3 = self.down2(x2, t, u)
+        x4 = self.down3(x3, t, u)
 
         x4 = self.bot(x4)
 
-        x = self.up1(x4, x3, t)
-        x = self.up2(x, x2, t)
-        x = self.up3(x, x1, t)
+        x = self.up1(x4, x3, t, u)
+        x = self.up2( x, x2, t, u)
+        x = self.up3( x, x1, t, u)
 
         return self.dec(x)
     
-    def forward(self, x, t):
+    def forward(self, x, t, u):
         t = t.unsqueeze(-1)
         t = pos_encoding(t, self.time_dim)
-        return self.unet_forward(x, t)
 
+        u = u.unsqueeze(-1)
+        u = pos_encoding(u, self.time_dim)
 
+        return self.unet_forward(x, t, u)
+
+"""
 class UNet_conditional(UNet):
     def __init__(self, c_in=3, c_out=3, time_dim=ED, num_classes=None, **kwargs):
         super().__init__(c_in, c_out, time_dim, **kwargs)
@@ -253,3 +273,4 @@ class UNet_conditional(UNet):
             t += self.label_emb(y)
 
         return self.unet_forwad(x, t)
+"""
