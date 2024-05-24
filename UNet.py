@@ -258,19 +258,20 @@ class UNet(nn.Module):
 
         return self.unet_forward(x, t, u)
 
-"""
 class UNet_conditional(UNet):
     def __init__(self, c_in=3, c_out=3, time_dim=ED, num_classes=None, **kwargs):
         super().__init__(c_in, c_out, time_dim, **kwargs)
         if num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_dim)
 
-    def forward(self, x, t, y=None):
+    def forward(self, x, t, u, y=None):
         t = t.unsqueeze(-1)
-        t = self.pos_encoding(t, self.time_dim)
+        t = pos_encoding(t, self.time_dim)
+
+        u = u.unsqueeze(-1)
+        u = pos_encoding(u, self.time_dim)
 
         if y is not None:
-            t += self.label_emb(y)
+            u += self.label_emb(y)
 
-        return self.unet_forwad(x, t)
-"""
+        return self.unet_forward(x, t, u)
