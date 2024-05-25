@@ -19,7 +19,7 @@ def pos_encoding(t, channels):
 class MHA(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.channels = channels        
+        self.channels = channels
         self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
         self.ln = nn.LayerNorm([channels])
 
@@ -89,38 +89,42 @@ class TConv(nn.Module):
         return self.tconv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim=ED):
+    def __init__(self, in_channels, out_channels, emb_dim=ED, att=True):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
             DoubleConv(in_channels, in_channels, residual=True),
             DoubleConv(in_channels, out_channels),
         )
-        self.emb_layer = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                emb_dim,
-                out_channels
-            ),
-        )
-        self.mha = MHA(out_channels)
-        self.ff = FF(out_channels, out_channels)
+
+        self.att = att
+        if self.att:
+            self.emb_layer = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(
+                    emb_dim,
+                    out_channels
+                ),
+            )
+            self.mha = MHA(out_channels)
+            self.ff = FF(out_channels, out_channels)
 
     def forward(self, x, t):
         
         x = self.maxpool_conv(x)
         
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        x = x + emb
-        
-        x = self.mha(x, x, x)
-        x = self.ff(x)
+        if self.att:
+            emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+            x = x + emb
+
+            x = self.mha(x, x, x)
+            x = self.ff(x)
 
         return x
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED):
+    def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED, att=True):
         super().__init__()
         self.up = nn.Sequential(
             TConv(in_channels, in_channels),
@@ -129,26 +133,30 @@ class Up(nn.Module):
             DoubleConv(in_channels + skip_channels, in_channels + skip_channels, residual=True),
             DoubleConv(in_channels + skip_channels, out_channels),
         )
-        self.emb_layer = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                emb_dim,
-                out_channels
-            ),
-        )
-        self.mha = MHA(skip_channels)
-        self.ff = FF(out_channels, out_channels)
+
+        self.att = att
+        if self.att:
+            self.emb_layer = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(
+                    emb_dim,
+                    out_channels
+                ),
+            )
+            self.mha = MHA(skip_channels)
+            self.ff = FF(out_channels, out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
         x = torch.cat([x, skip_x], dim=1)
         x = self.conv(x)
         
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        x = x + emb
+        if self.att:
+            emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+            x = x + emb
 
-        x = self.mha(x, x, x)
-        x = self.ff(x)
+            x = self.mha(x, x, x)
+            x = self.ff(x)
 
         return x
 
@@ -162,9 +170,11 @@ class UNet(nn.Module):
             nn.Conv2d(c_in, 16, kernel_size=1),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
         )
         
-        self.down1 = Down(16, 32)
+        self.down1 = Down(16, 32)#, att=False)
         self.down2 = Down(32, 64)
         self.down3 = Down(64, 128)
 
@@ -175,9 +185,11 @@ class UNet(nn.Module):
 
         self.up1 = Up(128, 64, 64)
         self.up2 = Up(64, 32, 32)
-        self.up3 = Up(32, 16, 16)
+        self.up3 = Up(32, 16, 16)#, att=False)
         
         self.dec = nn.Sequential(
+            DoubleConv(16, 16, residual=True),
+            DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             nn.Conv2d(16, c_out, kernel_size=1),
