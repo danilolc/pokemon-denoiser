@@ -4,7 +4,6 @@ import torch.nn.functional as F
 
 # https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/LICENSE
 
-ED = 256
 
 def pos_encoding(t, channels, device="cuda"):
     log_inv_freq = (-9.21034 / channels) * torch.arange(0.0, channels, 2.0, device=device)
@@ -86,7 +85,7 @@ class TConv(nn.Module):
         return self.tconv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim=ED, att=True):
+    def __init__(self, in_channels, out_channels, emb_dim, att=True):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
@@ -125,7 +124,7 @@ class Down(nn.Module):
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED, att=True):
+    def __init__(self, in_channels, skip_channels, out_channels, emb_dim, att=True):
         super().__init__()
         self.up = nn.Sequential(
             TConv(in_channels, in_channels),
@@ -167,7 +166,7 @@ class Up(nn.Module):
 
 
 class UNet(nn.Module):
-    def __init__(self, c_in=3, c_out=3, time_dim=ED):
+    def __init__(self, c_in=3, c_out=3, time_dim=256):
         super().__init__()
         self.time_dim = time_dim
 
@@ -178,18 +177,18 @@ class UNet(nn.Module):
             DoubleConv(16, 16, residual=True),
         )
         
-        self.down1 = Down(16, 32, att=False)
-        self.down2 = Down(32, 64)
-        self.down3 = Down(64, 128)
+        self.down1 = Down(16, 32, time_dim, att=False)
+        self.down2 = Down(32, 64, time_dim)
+        self.down3 = Down(64, 128, time_dim)
 
         self.bot = nn.Sequential(
             DoubleConv(128, 128),
             DoubleConv(128, 128),
         )
 
-        self.up1 = Up(128, 64, 64)
-        self.up2 = Up(64, 32, 32)
-        self.up3 = Up(32, 16, 16, att=False)
+        self.up1 = Up(128, 64, 64, time_dim)
+        self.up2 = Up(64, 32, 32, time_dim)
+        self.up3 = Up(32, 16, 16, time_dim, att=False)
         
         self.dec = nn.Sequential(
             DoubleConv(16, 16, residual=True),
@@ -221,7 +220,7 @@ class UNet(nn.Module):
         return self.unet_forward(x, t)
 
 class UNet_conditional(UNet):
-    def __init__(self, c_in=3, c_out=3, time_dim=ED, num_classes=None, **kwargs):
+    def __init__(self, c_in=3, c_out=3, time_dim=256, num_classes=None, **kwargs):
         super().__init__(c_in, c_out, time_dim, **kwargs)
         if num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_dim)
