@@ -89,38 +89,26 @@ class TConv(nn.Module):
         return self.tconv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim=ED):
+    def __init__(self, img_sz, in_channels, out_channels, emb_dim=ED):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
             DoubleConv(in_channels, in_channels, residual=True),
             DoubleConv(in_channels, out_channels),
         )
-        self.emb_layer = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                emb_dim,
-                out_channels
-            ),
-        )
-        self.mha = MHA(out_channels)
-        self.ff = FF(out_channels, out_channels)
+        self.vit = ViT(img_sz, img_sz // 8, out_channels)
 
     def forward(self, x, t):
         
         x = self.maxpool_conv(x)
         
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        x = x + emb
-        
-        x = self.mha(x, x, x)
-        x = self.ff(x)
+        x = self.vit(x, t)
 
         return x
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED):
+    def __init__(self, img_sz, in_channels, skip_channels, out_channels, emb_dim=ED):
         super().__init__()
         self.up = nn.Sequential(
             TConv(in_channels, in_channels),
@@ -129,26 +117,76 @@ class Up(nn.Module):
             DoubleConv(in_channels + skip_channels, in_channels + skip_channels, residual=True),
             DoubleConv(in_channels + skip_channels, out_channels),
         )
-        self.emb_layer = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(
-                emb_dim,
-                out_channels
-            ),
-        )
-        self.mha = MHA(skip_channels)
-        self.ff = FF(out_channels, out_channels)
+        self.vit = ViT(img_sz, img_sz // 8, out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
         x = torch.cat([x, skip_x], dim=1)
         x = self.conv(x)
-        
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        x = x + emb
 
-        x = self.mha(x, x, x)
-        x = self.ff(x)
+        x = self.vit(x, t)
+
+        return x
+
+
+class ViT_Embedding(nn.Module):
+    def __init__(self, img_sz, patch_sz, channels, out_features):
+        super().__init__()
+        self.np = img_sz // patch_sz
+        self.ps = patch_sz
+        self.emb = nn.Linear(channels * self.ps * self.ps, out_features)
+        self.pos_emb = nn.Parameter(
+            torch.randn((self.np * self.np, out_features))
+        )
+
+    def forward(self, x):
+        patches = x.unfold(2, self.ps, self.ps).unfold(3, self.ps, self.ps)
+        patches = patches.permute(0, 2, 3, 1, 4, 5) # [b, np, np, cc, ps, ps]
+
+        sz = patches.shape[0:3]            # (b, np, np)
+        patches = patches.flatten(0, 2)    # [b * np * np, cc, ps, ps]
+        patches = patches.flatten(1, 3)    # [b * np * np, cc * ps * ps]
+        patches = self.emb(patches)        # [b * np * np, out]
+        patches = patches.unflatten(0, sz) # [b, np, np, out]
+
+        patches = patches.flatten(1, 2)    # [b, np * np, out]
+
+        return patches + self.pos_emb
+
+class ViT(nn.Module):
+    def __init__(self, img_sz, patch_sz, channels, time_dim=ED):
+        super().__init__()
+        self.cc = channels
+        self.ps = patch_sz
+        self.ddim = self.cc * self.ps * self.ps
+        self.np = img_sz // patch_sz
+        self.emb = ViT_Embedding(img_sz, patch_sz, self.cc, self.ddim)
+        self.encoder = nn.TransformerEncoderLayer(
+            d_model=self.ddim,
+            nhead=4,
+            dim_feedforward=self.ddim,
+            batch_first=True
+        )
+        self.time_enc = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(
+                time_dim,
+                self.ddim
+            ),
+        )
+
+    def forward(self, x, t):
+        # x.shape -> [b, 3, img_sz, img_sz]
+
+        x = self.emb(x)     # [b, np * np, 3 * ps * ps]
+        x += self.time_enc(t)[:, None, :]
+        x = self.encoder(x) # [b, np * np, 3 * ps * ps]
+
+        x = x.unflatten(2, (self.cc, self.ps, self.ps)) # [b, np * np, 3, ps, ps]
+        x = x.unflatten(1, (self.np, self.np))    # [b, np, np, 3, ps, ps]
+        x = x.permute(0, 3, 1, 4, 2, 5)           # [b, 3, np, ps, np, ps]
+        x = x.flatten(4, 5)                       # [b, 3, np, ps, img_sz]
+        x = x.flatten(2, 3)                       # [b, 3, img_sz, img_sz]
 
         return x
 
@@ -164,18 +202,18 @@ class UNet(nn.Module):
             DoubleConv(16, 16, residual=True),
         )
         
-        self.down1 = Down(16, 32)
-        self.down2 = Down(32, 64)
-        self.down3 = Down(64, 128)
+        self.down1 = Down(36, 16, 32)
+        self.down2 = Down(18, 32, 64)
+        self.down3 = Down(9, 64, 128)
 
         self.bot = nn.Sequential(
             DoubleConv(128, 128),
             DoubleConv(128, 128),
         )
 
-        self.up1 = Up(128, 64, 64)
-        self.up2 = Up(64, 32, 32)
-        self.up3 = Up(32, 16, 16)
+        self.up1 = Up(18, 128, 64, 64)
+        self.up2 = Up(36, 64, 32, 32)
+        self.up3 = Up(72, 32, 16, 16)
         
         self.dec = nn.Sequential(
             DoubleConv(16, 16, residual=True),
