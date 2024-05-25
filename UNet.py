@@ -6,13 +6,10 @@ import torch.nn.functional as F
 
 ED = 256
 
-def pos_encoding(t, channels):
-    inv_freq = 1.0 / (
-        10000
-        ** (torch.arange(0, channels, 2, device="cuda").float() / channels)
-    )
-    pos_enc_a = torch.sin(t.repeat(1, channels // 2) * inv_freq)
-    pos_enc_b = torch.cos(t.repeat(1, channels // 2) * inv_freq)
+def pos_encoding(t, channels, device="cuda"):
+    log_inv_freq = (-9.21034 / channels) * torch.arange(0.0, channels, 2.0, device=device)
+    pos_enc_a = torch.sin(t * torch.exp(log_inv_freq[None, :]))
+    pos_enc_b = torch.cos(t * torch.exp(log_inv_freq[None, :]))
     pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
     return pos_enc
 
@@ -25,13 +22,13 @@ class MHA(nn.Module):
 
     def forward(self, q, k, v):
         size = v.shape[-2:]
-        q = q.flatten(2).swapaxes(1, 2)
-        k = k.flatten(2).swapaxes(1, 2)
-        v = v.flatten(2).swapaxes(1, 2)
+        q = q.flatten(2).transpose(1, 2)
+        k = k.flatten(2).transpose(1, 2)
+        v = v.flatten(2).transpose(1, 2)
         att, _ = self.mha(q, k, v)
         att = self.ln(att + v)
 
-        return att.swapaxes(2, 1).unflatten(2, size)
+        return att.transpose(2, 1).unflatten(2, size)
 
 class FF(nn.Module):
     def __init__(self, in_c, out_c):
@@ -44,9 +41,9 @@ class FF(nn.Module):
         self.ln = nn.LayerNorm([out_c])
 
     def forward(self, x):
-        x = x.permute(0, 2, 3, 1)
+        x = x.transpose(1, -1)
         x = self.ln(x + self.linear(x))
-        x = x.permute(0, 3, 1, 2)
+        x = x.transpose(-1, 1)
         return x
 
 class DoubleConv(nn.Module):
@@ -106,19 +103,23 @@ class Down(nn.Module):
                     out_channels
                 ),
             )
-            self.mha = MHA(out_channels)
-            self.ff = FF(out_channels, out_channels)
+            self.mha1 = MHA(out_channels)
+            self.ff1 = FF(out_channels, out_channels)
+            self.mha2 = MHA(out_channels)
+            self.ff2 = FF(out_channels, out_channels)
 
     def forward(self, x, t):
         
         x = self.maxpool_conv(x)
         
         if self.att:
-            emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-            x = x + emb
+            emb = self.emb_layer(t)
+            x = x + emb[:, :, None, None]
 
-            x = self.mha(x, x, x)
-            x = self.ff(x)
+            x = self.mha1(x, x, x)
+            x = self.ff1(x)
+            x = self.mha2(x, x, x)
+            x = self.ff2(x)
 
         return x
 
@@ -143,8 +144,10 @@ class Up(nn.Module):
                     out_channels
                 ),
             )
-            self.mha = MHA(skip_channels)
-            self.ff = FF(out_channels, out_channels)
+            self.mha1 = MHA(skip_channels)
+            self.ff1 = FF(out_channels, out_channels)
+            self.mha2 = MHA(skip_channels)
+            self.ff2 = FF(out_channels, out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
@@ -152,11 +155,13 @@ class Up(nn.Module):
         x = self.conv(x)
         
         if self.att:
-            emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-            x = x + emb
+            emb = self.emb_layer(t)
+            x = x + emb[:, :, None, None]
 
-            x = self.mha(x, x, x)
-            x = self.ff(x)
+            x = self.mha1(skip_x, skip_x, x)
+            x = self.ff1(x)
+            x = self.mha2(x, x, x)
+            x = self.ff2(x)
 
         return x
 
@@ -171,10 +176,9 @@ class UNet(nn.Module):
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
-            DoubleConv(16, 16, residual=True),
         )
         
-        self.down1 = Down(16, 32)#, att=False)
+        self.down1 = Down(16, 32, att=False)
         self.down2 = Down(32, 64)
         self.down3 = Down(64, 128)
 
@@ -185,10 +189,9 @@ class UNet(nn.Module):
 
         self.up1 = Up(128, 64, 64)
         self.up2 = Up(64, 32, 32)
-        self.up3 = Up(32, 16, 16)#, att=False)
+        self.up3 = Up(32, 16, 16, att=False)
         
         self.dec = nn.Sequential(
-            DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
