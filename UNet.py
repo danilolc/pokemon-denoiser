@@ -18,110 +18,36 @@ def pos_encoding(t, channels):
 
 class MHA(nn.Module):
     def __init__(self, channels):
-        super(SelfAttention, self).__init__()
+        super().__init__()
         self.channels = channels        
         self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
         self.ln = nn.LayerNorm([channels])
 
     def forward(self, q, k, v):
-        size = q.shape[-1]
-        q = q.view(-1, self.channels, size * size).swapaxes(1, 2)
-        k = k.view(-1, self.channels, size * size).swapaxes(1, 2)
-        v = v.view(-1, self.channels, size * size).swapaxes(1, 2)
-        attention_value, _ = self.mha(q, k, v)
-        attention_value = self.ln(attention_value + q)
+        size = v.shape[-2:]
+        q = q.flatten(2).swapaxes(1, 2)
+        k = k.flatten(2).swapaxes(1, 2)
+        v = v.flatten(2).swapaxes(1, 2)
+        att, _ = self.mha(q, k, v)
+        att = self.ln(att + v)
 
-        return attention_value.swapaxes(2, 1).view(-1, self.channels, size, size)
+        return att.swapaxes(2, 1).unflatten(2, size)
 
 class FF(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, in_c, out_c):
+        super().__init__()
         self.linear = nn.Sequential(
-            nn.Linear(channels, channels),
+            nn.Linear(in_c, in_c),
             nn.GELU(),
-            nn.Linear(channels, channels),
+            nn.Linear(in_c, out_c),
         )
-        self.ln = nn.LayerNorm([channels])
+        self.ln = nn.LayerNorm([out_c])
 
     def forward(self, x):
-        x = x.swapaxes(-1, )
-        ff = self.linear(x)
-        ff = self.ln(x + ff)       
-
-        return ff.swapaxes()
-
-class SelfAttention(nn.Module):
-    def __init__(self, channels):
-        super(SelfAttention, self).__init__()
-        self.channels = channels        
-        self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
-        self.ln = nn.LayerNorm([channels])
-        self.ff_self = nn.Sequential(
-            nn.LayerNorm([channels]),
-            nn.Linear(channels, channels),
-            nn.GELU(),
-            nn.Linear(channels, channels),
-        )
-
-    def forward(self, x):
-        size = x.shape[-1]
-        x = x.view(-1, self.channels, size * size).swapaxes(1, 2)
-        x_ln = self.ln(x)
-        attention_value, _ = self.mha(x_ln, x_ln, x_ln)
-        attention_value = attention_value + x
-        attention_value = self.ff_self(attention_value) + attention_value
-        return attention_value.swapaxes(2, 1).view(-1, self.channels, size, size)
-
-class ConvolutionBlock(nn.Module):
-    def __init__(self, in_c, out_c, kernel_size, padding='same', stride=1, dilation=1, bias=True):
-        super().__init__()
-
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_c, out_c, 
-                    kernel_size=kernel_size,
-                    padding=padding,
-                    stride=stride, 
-                    dilation=dilation,
-                    bias=bias),
-            nn.BatchNorm2d(out_c),
-            nn.GELU(),
-        )
-
-    def forward(self, x):
-        return self.conv(x)
-
-class ASPP(nn.Module):
-    def __init__(self, in_c, out_c, residual=False):
-        super().__init__()
-
-        self.residual = residual
-
-        self.conv1 = ConvolutionBlock(in_c, in_c, kernel_size=1)
-        self.conv2 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=6)  # 3
-        self.conv3 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=12) # 6
-        self.conv4 = ConvolutionBlock(in_c, in_c, kernel_size=3, dilation=18) # 12
-
-        self.conv5 = nn.Sequential(
-            nn.AvgPool2d(8),
-            ConvolutionBlock(in_c, in_c, kernel_size=1),
-            nn.Upsample(scale_factor=8, mode='bilinear'),
-        )
-
-        self.conv6 = ConvolutionBlock(5 * in_c, out_c, kernel_size=1)
-
-    def forward(self, x):
-        x1 = self.conv1(x)
-        x2 = self.conv2(x)
-        x3 = self.conv3(x)
-        x4 = self.conv4(x)
-        x5 = self.conv5(x)
-
-        x6 = torch.cat([x1, x2, x3, x4, x5], dim=1)
-        x6 = self.conv6(x6)
-
-        if self.residual:
-            return x + x6
-        
-        return x6
+        x = x.permute(0, 2, 3, 1)
+        x = self.ln(x + self.linear(x))
+        x = x.permute(0, 3, 1, 2)
+        return x
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels=None, residual=False):
@@ -168,8 +94,7 @@ class Down(nn.Module):
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
             DoubleConv(in_channels, in_channels, residual=True),
-            #DoubleConv(in_channels, in_channels, residual=True),
-            ASPP(in_channels, out_channels),
+            DoubleConv(in_channels, out_channels),
         )
         self.emb_layer = nn.Sequential(
             nn.SiLU(),
@@ -178,24 +103,31 @@ class Down(nn.Module):
                 out_channels
             ),
         )
-        self.att = SelfAttention(out_channels)
+        self.mha = MHA(out_channels)
+        self.ff = FF(out_channels, out_channels)
 
     def forward(self, x, t):
+        
         x = self.maxpool_conv(x)
+        
         emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return self.att(x + emb)
+        x = x + emb
+        
+        x = self.mha(x, x, x)
+        x = self.ff(x)
+
+        return x
 
 
 class Up(nn.Module):
     def __init__(self, in_channels, skip_channels, out_channels, emb_dim=ED):
         super().__init__()
-
-        #self.up = TConv(in_channels, in_channels)
-        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up = nn.Sequential(
+            TConv(in_channels, in_channels),
+        )
         self.conv = nn.Sequential(
-            DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            #DoubleConv(skip_channels + in_channels, skip_channels + in_channels, residual=True),
-            ASPP(skip_channels + in_channels, out_channels),
+            DoubleConv(in_channels + skip_channels, in_channels + skip_channels, residual=True),
+            DoubleConv(in_channels + skip_channels, out_channels),
         )
         self.emb_layer = nn.Sequential(
             nn.SiLU(),
@@ -204,14 +136,21 @@ class Up(nn.Module):
                 out_channels
             ),
         )
-        self.att = SelfAttention(out_channels)
+        self.mha = MHA(skip_channels)
+        self.ff = FF(out_channels, out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
-        x = torch.cat([skip_x, x], dim=1)
+        x = torch.cat([x, skip_x], dim=1)
         x = self.conv(x)
+        
         emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
-        return self.att(x + emb)
+        x = x + emb
+
+        x = self.mha(x, x, x)
+        x = self.ff(x)
+
+        return x
 
 
 class UNet(nn.Module):
@@ -221,8 +160,6 @@ class UNet(nn.Module):
 
         self.enc = nn.Sequential(
             nn.Conv2d(c_in, 16, kernel_size=1),
-            DoubleConv(16, 16, residual=True),
-            DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
         )
@@ -241,8 +178,6 @@ class UNet(nn.Module):
         self.up3 = Up(32, 16, 16)
         
         self.dec = nn.Sequential(
-            DoubleConv(16, 16, residual=True),
-            DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             nn.Conv2d(16, c_out, kernel_size=1),
@@ -267,9 +202,6 @@ class UNet(nn.Module):
     def forward(self, x, t):
         t = t.unsqueeze(-1)
         t = pos_encoding(t, self.time_dim)
-
-        u = u.unsqueeze(-1)
-        u = pos_encoding(u, self.time_dim)
 
         return self.unet_forward(x, t)
 
