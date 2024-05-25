@@ -216,6 +216,6 @@ class UNet_conditional(UNet):
         t = pos_encoding(t, self.time_dim)
 
         if y is not None:
-            t += self.label_emb(y)
+            t += self.label_emb(y).sum(dim=1)
 
         return self.unet_forward(x, t)
