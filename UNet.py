@@ -4,9 +4,8 @@ import torch.nn.functional as F
 
 # https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/LICENSE
 
-
-def pos_encoding(t, channels, device="cuda"):
-    log_inv_freq = (-9.21034 / channels) * torch.arange(0.0, channels, 2.0, device=device)
+def pos_encoding(t, channels):
+    log_inv_freq = (-9.21034 / channels) * torch.arange(0.0, channels, 2.0, device=t.device)
     pos_enc_a = torch.sin(t * torch.exp(log_inv_freq[None, :]))
     pos_enc_b = torch.cos(t * torch.exp(log_inv_freq[None, :]))
     pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
@@ -15,8 +14,13 @@ def pos_encoding(t, channels, device="cuda"):
 class MHA(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.channels = channels
         self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
+        self.ln = nn.LayerNorm([channels])
+        self.linear = nn.Sequential(
+            nn.Linear(channels, channels),
+            nn.GELU(),
+            nn.Linear(channels, channels),
+        )
         self.ln = nn.LayerNorm([channels])
 
     def forward(self, q, k, v):
@@ -25,25 +29,14 @@ class MHA(nn.Module):
         k = k.flatten(2).transpose(1, 2)
         v = v.flatten(2).transpose(1, 2)
         att, _ = self.mha(q, k, v)
-        att = self.ln(att + v)
+        att = self.ln1(att + v)
+        att = att.transpose(2, 1).unflatten(2, size)
 
-        return att.transpose(2, 1).unflatten(2, size)
+        att = att.transpose(1, -1)
+        att = self.ln2(att + self.linear(att))
+        att = att.transpose(-1, 1)
 
-class FF(nn.Module):
-    def __init__(self, in_c, out_c):
-        super().__init__()
-        self.linear = nn.Sequential(
-            nn.Linear(in_c, in_c),
-            nn.GELU(),
-            nn.Linear(in_c, out_c),
-        )
-        self.ln = nn.LayerNorm([out_c])
-
-    def forward(self, x):
-        x = x.transpose(1, -1)
-        x = self.ln(x + self.linear(x))
-        x = x.transpose(-1, 1)
-        return x
+        return att
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels=None, residual=False):
@@ -97,15 +90,10 @@ class Down(nn.Module):
         if self.att:
             self.emb_layer = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(
-                    emb_dim,
-                    out_channels
-                ),
+                nn.Linear(emb_dim, out_channels),
             )
             self.mha1 = MHA(out_channels)
-            self.ff1 = FF(out_channels, out_channels)
             self.mha2 = MHA(out_channels)
-            self.ff2 = FF(out_channels, out_channels)
 
     def forward(self, x, t):
         
@@ -116,9 +104,7 @@ class Down(nn.Module):
             x = x + emb[:, :, None, None]
 
             x = self.mha1(x, x, x)
-            x = self.ff1(x)
             x = self.mha2(x, x, x)
-            x = self.ff2(x)
 
         return x
 
@@ -138,15 +124,10 @@ class Up(nn.Module):
         if self.att:
             self.emb_layer = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(
-                    emb_dim,
-                    out_channels
-                ),
+                nn.Linear(emb_dim, out_channels),
             )
             self.mha1 = MHA(skip_channels)
-            self.ff1 = FF(out_channels, out_channels)
             self.mha2 = MHA(skip_channels)
-            self.ff2 = FF(out_channels, out_channels)
 
     def forward(self, x, skip_x, t):
         x = self.up(x)
@@ -158,9 +139,7 @@ class Up(nn.Module):
             x = x + emb[:, :, None, None]
 
             x = self.mha1(skip_x, skip_x, x)
-            x = self.ff1(x)
             x = self.mha2(x, x, x)
-            x = self.ff2(x)
 
         return x
 
