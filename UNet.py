@@ -15,13 +15,13 @@ class MHA(nn.Module):
     def __init__(self, channels):
         super().__init__()
         self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
-        self.ln = nn.LayerNorm([channels])
+        self.ln1 = nn.LayerNorm([channels])
         self.linear = nn.Sequential(
             nn.Linear(channels, channels),
             nn.GELU(),
             nn.Linear(channels, channels),
         )
-        self.ln = nn.LayerNorm([channels])
+        self.ln2 = nn.LayerNorm([channels])
 
     def forward(self, q, k, v):
         size = v.shape[-2:]
@@ -56,7 +56,7 @@ class DoubleConv(nn.Module):
         if self.residual:
             return F.gelu(x + self.double_conv(x))
         else:
-            return self.double_conv(x)
+            return F.gelu(self.double_conv(x))
 
 
 class TConv(nn.Module):
@@ -207,8 +207,6 @@ class UNet_conditional(UNet):
     def forward(self, x, t, y=None):
         t = t.unsqueeze(-1)
         t = pos_encoding(t, self.time_dim)
-
-        if y is not None:
-            t += self.label_emb(y).sum(dim=1)
+        t += self.label_emb(y[:, 0])
 
         return self.unet_forward(x, t)
