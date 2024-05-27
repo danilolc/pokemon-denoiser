@@ -118,17 +118,25 @@ class ContourEncoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.step1 = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=1),
-            DoubleConv(16, 16, residual=True),
+            DoubleConv(1, 16),
+
             nn.Conv2d(16, 32, kernel_size=2, stride=2),
+            nn.GroupNorm(1, 32),
+            nn.GELU(),
         )
         self.step2 = nn.Sequential(
-            DoubleConv(32, 32, residual=True),
+            DoubleConv(32, 32),
+
             nn.Conv2d(32, 64, kernel_size=2, stride=2),
+            nn.GroupNorm(1, 64),
+            nn.GELU(),
         )
         self.step3 = nn.Sequential(
-            DoubleConv(64, 64, residual=True),
+            DoubleConv(64, 64),
+
             nn.Conv2d(64, 128, kernel_size=2, stride=2),
+            nn.GroupNorm(1, 128),
+            nn.GELU(),
         )
         self.mha1 = MHA(32)
         self.mha2 = MHA(64)
@@ -150,9 +158,9 @@ class TimeEncoder(nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
         self.encoders = nn.ModuleList()
-        for i in [32, 64, 128]:
+        for i in [32, 64, 128, 64, 32]:
             self.encoders.append(nn.Sequential(
-                nn.Linear(emb_dim, emb_dim),
+                #nn.Linear(emb_dim, emb_dim),
                 nn.SiLU(),
                 nn.Linear(emb_dim, i),
             ))
@@ -218,31 +226,31 @@ class UNet(nn.Module):
     def unet_forward(self, x, t, c):
 
         c1, c2, c3 = self.c_encoder(c)
-        t1, t2, t3 = self.t_encoder(t)
+        t1, t2, t3, t4, t5 = self.t_encoder(t)
         
         x1 = self.enc(x)
         
-        x2 = self.down1(x1) + t1
-        x2 = self.att1c(c1, c1, x2)
-        x2 = self.att1x(x2, x2, x2)
+        x2 = self.down1(x1)
+        x2 = self.att1c(x2 + c1, x2 + c1, x2 + c1)
+        x2 = self.att1x(x2 + t1, x2 + t1, x2 + t1)
 
-        x3 = self.down2(x2) + t2
-        x3 = self.att2c(c2, c2, x3)
-        x3 = self.att2x(x3, x3, x3)
+        x3 = self.down2(x2)
+        x3 = self.att2c(x3 + c2, x3 + c2, x3 + c2)
+        x3 = self.att2x(x3 + t2, x3 + t2, x3 + t2)
 
-        x4 = self.down3(x3) + t3
-        x4 = self.att3c(c3, c3, x4)
-        x4 = self.att3x(x4, x4, x4)
+        x4 = self.down3(x3)
+        x4 = self.att3c(x4 + c3, x4 + c3, x4 + c3)
+        x4 = self.att3x(x4 + t3, x4 + t3, x4 + t3)
 
         x4 = self.bot(x4)
 
-        x4 = self.up1(x4, x3) + t2
-        x4 = self.att4c(c2, c2, x4)
-        x4 = self.att4x(x4, x4, x4)
+        x4 = self.up1(x4, x3)
+        x4 = self.att4c(x4 + c2, x4 + c2, x4 + c2)
+        x4 = self.att4x(x4 + t4, x4 + t4, x4 + t4)
 
-        x4 = self.up2(x4, x2) + t1
-        x4 = self.att5c(c1, c1, x4)
-        x4 = self.att5x(x4, x4, x4)
+        x4 = self.up2(x4, x2)
+        x4 = self.att5c(x4 + c1, x4 + c1, x4 + c1)
+        x4 = self.att5x(x4 + t5, x4 + t5, x4 + t5)
 
         x4 = self.up3(x4, x1)
 
