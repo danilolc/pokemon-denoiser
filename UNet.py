@@ -80,15 +80,21 @@ class TConv(nn.Module):
 class Down(nn.Module):
     def __init__(self, in_channels, out_channels, emb_dim, att=True):
         super().__init__()
-        self.maxpool_conv = nn.Sequential(
-            nn.MaxPool2d(2),
-            DoubleConv(in_channels, in_channels, residual=True),
-            DoubleConv(in_channels, out_channels),
+        self.downsample = nn.Sequential(
+            #nn.MaxPool2d(2),
+            nn.Conv2d(in_channels, out_channels, kernel_size=2, stride=2),
+            nn.GroupNorm(1, out_channels),
+            nn.GELU(),
+        )
+        self.conv = nn.Sequential(
+            DoubleConv(out_channels, out_channels, residual=True),
+            DoubleConv(out_channels, out_channels, residual=True),
         )
 
         self.att = att
         if self.att:
             self.emb_layer = nn.Sequential(
+                nn.Linear(emb_dim, emb_dim),
                 nn.SiLU(),
                 nn.Linear(emb_dim, out_channels),
             )
@@ -97,7 +103,8 @@ class Down(nn.Module):
 
     def forward(self, x, t):
         
-        x = self.maxpool_conv(x)
+        x = self.downsample(x)
+        x = self.conv(x)
         
         if self.att:
             emb = self.emb_layer(t)
@@ -123,6 +130,7 @@ class Up(nn.Module):
         self.att = att
         if self.att:
             self.emb_layer = nn.Sequential(
+                nn.Linear(emb_dim, emb_dim),
                 nn.SiLU(),
                 nn.Linear(emb_dim, out_channels),
             )
@@ -138,7 +146,7 @@ class Up(nn.Module):
             emb = self.emb_layer(t)
             x = x + emb[:, :, None, None]
 
-            x = self.mha1(skip_x, skip_x, x)
+            x = self.mha1(x, x, x)
             x = self.mha2(x, x, x)
 
         return x
