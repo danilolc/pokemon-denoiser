@@ -80,7 +80,7 @@ def load_contour():
         return torch.stack(ten)
         
     emerald = load_images(PATH + "emerald_cont/")
-    frlg = load_images(PATH + "emerald_cont/")
-    rs = load_images(PATH + "emerald_cont/")
+    frlg = load_images(PATH + "frlg_cont/")
+    rs = load_images(PATH + "rs_cont/")
 
     return torch.stack([emerald, frlg, rs]).mean(dim=2, keepdim=True)
