@@ -63,7 +63,6 @@ class TConv(nn.Module):
     def __init__(self, in_c, out_c):
         super().__init__()
         self.tconv = nn.Sequential(
-
             nn.ConvTranspose2d(in_c, out_c,
                                kernel_size=3, 
                                stride=2, 
@@ -71,14 +70,13 @@ class TConv(nn.Module):
                                output_padding=1),
             nn.GroupNorm(1, out_c),
             nn.GELU(),
-
         )
 
     def forward(self, x):
         return self.tconv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim, att=True):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
         self.downsample = nn.Sequential(
             #nn.MaxPool2d(2),
@@ -91,33 +89,15 @@ class Down(nn.Module):
             DoubleConv(out_channels, out_channels, residual=True),
         )
 
-        self.att = att
-        if self.att:
-            self.emb_layer = nn.Sequential(
-                nn.Linear(emb_dim, emb_dim),
-                nn.SiLU(),
-                nn.Linear(emb_dim, out_channels),
-            )
-            self.mha1 = MHA(out_channels)
-            self.mha2 = MHA(out_channels)
-
-    def forward(self, x, t):
-        
+    def forward(self, x):
         x = self.downsample(x)
         x = self.conv(x)
-        
-        if self.att:
-            emb = self.emb_layer(t)
-            x = x + emb[:, :, None, None]
-
-            x = self.mha1(x, x, x)
-            x = self.mha2(x, x, x)
 
         return x
 
 
 class Up(nn.Module):
-    def __init__(self, in_channels, skip_channels, out_channels, emb_dim, att=True):
+    def __init__(self, in_channels, skip_channels, out_channels):
         super().__init__()
         self.up = nn.Sequential(
             TConv(in_channels, in_channels),
@@ -127,29 +107,58 @@ class Up(nn.Module):
             DoubleConv(in_channels + skip_channels, out_channels),
         )
 
-        self.att = att
-        if self.att:
-            self.emb_layer = nn.Sequential(
-                nn.Linear(emb_dim, emb_dim),
-                nn.SiLU(),
-                nn.Linear(emb_dim, out_channels),
-            )
-            self.mha1 = MHA(skip_channels)
-            self.mha2 = MHA(skip_channels)
-
-    def forward(self, x, skip_x, t):
+    def forward(self, x, skip_x):
         x = self.up(x)
         x = torch.cat([x, skip_x], dim=1)
         x = self.conv(x)
-        
-        if self.att:
-            emb = self.emb_layer(t)
-            x = x + emb[:, :, None, None]
-
-            x = self.mha1(x, x, x)
-            x = self.mha2(x, x, x)
 
         return x
+
+class ContourEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.step1 = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=1),
+            DoubleConv(16, 16, residual=True),
+            nn.Conv2d(16, 32, kernel_size=2, stride=2),
+        )
+        self.step2 = nn.Sequential(
+            DoubleConv(32, 32, residual=True),
+            nn.Conv2d(32, 64, kernel_size=2, stride=2),
+        )
+        self.step3 = nn.Sequential(
+            DoubleConv(64, 64, residual=True),
+            nn.Conv2d(64, 128, kernel_size=2, stride=2),
+        )
+        self.mha1 = MHA(32)
+        self.mha2 = MHA(64)
+        self.mha3 = MHA(128)
+
+    def forward(self, c):
+        c1 = self.step1(c)
+        c1 = self.mha1(c1, c1, c1)
+
+        c2 = self.step2(c1)
+        c2 = self.mha2(c2, c2, c2)
+
+        c3 = self.step3(c2)
+        c3 = self.mha3(c3, c3, c3)
+
+        return c1, c2, c3
+
+class TimeEncoder(nn.Module):
+    def __init__(self, emb_dim):
+        super().__init__()
+        self.encoders = nn.ModuleList()
+        for i in [32, 64, 128]:
+            self.encoders.append(nn.Sequential(
+                nn.Linear(emb_dim, emb_dim),
+                nn.SiLU(),
+                nn.Linear(emb_dim, i),
+            ))
+
+    def forward(self, t):
+        return [enc(t)[:, :, None, None] for enc in self.encoders]
 
 
 class UNet(nn.Module):
@@ -159,23 +168,26 @@ class UNet(nn.Module):
 
         self.enc = nn.Sequential(
             nn.Conv2d(c_in, 16, kernel_size=1),
+            nn.GroupNorm(1, 16),
+            nn.GELU(),
+            
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
             DoubleConv(16, 16, residual=True),
         )
         
-        self.down1 = Down(16, 32, time_dim, att=False)
-        self.down2 = Down(32, 64, time_dim)
-        self.down3 = Down(64, 128, time_dim)
+        self.down1 = Down(16, 32)
+        self.down2 = Down(32, 64)
+        self.down3 = Down(64, 128)
 
         self.bot = nn.Sequential(
             DoubleConv(128, 128),
             DoubleConv(128, 128),
         )
 
-        self.up1 = Up(128, 64, 64, time_dim)
-        self.up2 = Up(64, 32, 32, time_dim)
-        self.up3 = Up(32, 16, 16, time_dim, att=False)
+        self.up1 = Up(128, 64, 64)
+        self.up2 = Up(64, 32, 32)
+        self.up3 = Up(32, 16, 16)
         
         self.dec = nn.Sequential(
             DoubleConv(16, 16, residual=True),
@@ -184,21 +196,57 @@ class UNet(nn.Module):
             nn.Conv2d(16, c_out, kernel_size=1),
         )
 
-    def unet_forward(self, x, t):
+        self.c_encoder = ContourEncoder()
+        self.t_encoder = TimeEncoder(self.time_dim)
+
+        self.att1c = MHA(32)
+        self.att1x = MHA(32)
+
+        self.att2c = MHA(64)
+        self.att2x = MHA(64)
+        
+        self.att3c = MHA(128)
+        self.att3x = MHA(128)
+
+        self.att4c = MHA(64)
+        self.att4x = MHA(64)
+
+        self.att5c = MHA(32)
+        self.att5x = MHA(32)
+
+
+    def unet_forward(self, x, t, c):
+
+        c1, c2, c3 = self.c_encoder(c)
+        t1, t2, t3 = self.t_encoder(t)
         
         x1 = self.enc(x)
+        
+        x2 = self.down1(x1) + t1
+        x2 = self.att1c(c1, c1, x2)
+        x2 = self.att1x(x2, x2, x2)
 
-        x2 = self.down1(x1, t)
-        x3 = self.down2(x2, t)
-        x4 = self.down3(x3, t)
+        x3 = self.down2(x2) + t2
+        x3 = self.att2c(c2, c2, x3)
+        x3 = self.att2x(x3, x3, x3)
+
+        x4 = self.down3(x3) + t3
+        x4 = self.att3c(c3, c3, x4)
+        x4 = self.att3x(x4, x4, x4)
 
         x4 = self.bot(x4)
 
-        x = self.up1(x4, x3, t)
-        x = self.up2( x, x2, t)
-        x = self.up3( x, x1, t)
+        x4 = self.up1(x4, x3) + t2
+        x4 = self.att4c(c2, c2, x4)
+        x4 = self.att4x(x4, x4, x4)
 
-        return self.dec(x)
+        x4 = self.up2(x4, x2) + t1
+        x4 = self.att5c(c1, c1, x4)
+        x4 = self.att5x(x4, x4, x4)
+
+        x4 = self.up3(x4, x1)
+
+        return self.dec(x4)
     
     def forward(self, x, t):
         t = t.unsqueeze(-1)
@@ -207,14 +255,13 @@ class UNet(nn.Module):
         return self.unet_forward(x, t)
 
 class UNet_conditional(UNet):
-    def __init__(self, c_in=3, c_out=3, time_dim=256, num_classes=None, **kwargs):
+    def __init__(self, c_in=3, c_out=3, time_dim=256, num_classes=10, **kwargs):
         super().__init__(c_in, c_out, time_dim, **kwargs)
-        if num_classes is not None:
-            self.label_emb = nn.Embedding(num_classes, time_dim)
+        self.label_emb = nn.Embedding(num_classes, time_dim)
 
-    def forward(self, x, t, y=None):
+    def forward(self, x, t, y, c):
         t = t.unsqueeze(-1)
         t = pos_encoding(t, self.time_dim)
-        t += self.label_emb(y[:, 0])
+        #t += self.label_emb(y[:, 0])
 
-        return self.unet_forward(x, t)
+        return self.unet_forward(x, t, c)
