@@ -63,11 +63,14 @@ def load_dataset():
         
         return torch.stack(ten)
         
-    emerald = load_images(PATH + "emerald/")
-    frlg = load_images(PATH + "frlg/")
     rs = load_images(PATH + "rs/")
+    frlg = load_images(PATH + "frlg/")
+    emerald = load_images(PATH + "emerald/")
 
-    return torch.stack([emerald, frlg, rs])
+    rs_back = load_images(PATH + "rs/back/")
+    frlg_back = load_images(PATH + "frlg/back/")
+
+    return torch.stack([rs, frlg, emerald, rs_back, frlg_back])
 
 def load_contour():
     
