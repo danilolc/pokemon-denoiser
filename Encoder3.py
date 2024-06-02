@@ -7,19 +7,19 @@ import time
 
 from tqdm import tqdm
 
-from load_dataset import load_dataset, plot_image
+from load_dataset import load_dataset, load_dataset2, plot_image
 from torchvision.transforms import v2
 from matplotlib import pyplot as plt
 
 from UNet import ssim_loss
 
 pos_transform = v2.Compose([
-    #v2.Pad(6, 1.0),
-    #v2.RandomCrop((64 + 6, 64 + 6)),
-    #v2.Pad(1, 1.0),
-    v2.Pad(8, 1.0),
-    v2.RandomCrop((64 + 8, 64 + 8)),
-    v2.RandomChannelPermutation(),
+    v2.Pad(6, 1.0),
+    v2.RandomCrop((64 + 6, 64 + 6)),
+    v2.Pad(1, 1.0),
+    #v2.Pad(8, 1.0),
+    #v2.RandomCrop((64 + 8, 64 + 8)),
+    #v2.RandomChannelPermutation(),
 ])
 
 #https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
@@ -46,7 +46,7 @@ class Transformer(nn.Module):
     
 #https://medium.com/@14prakash/masked-autoencoders-9e0f7a4a2585
 class MyMAE(nn.Module):
-    def __init__(self, img_size, patch_size, emb_dim):
+    def __init__(self, in_c, img_size, patch_size, emb_dim):
         super().__init__()
         assert img_size % patch_size == 0
 
@@ -56,15 +56,17 @@ class MyMAE(nn.Module):
         self.num_patches = (self.img_size // self.patch_size) ** 2
         self.masked_size = int(0.75 * self.num_patches)
 
-        self.patch_embedding = nn.Conv2d(3, self.emb_dim, 
+        self.palette_emb = nn.Linear(3 * 16, self.emb_dim)
+
+        self.patch_embedding = nn.Conv2d(in_c, self.emb_dim, 
                                          kernel_size=patch_size, 
                                          stride=patch_size,
                                          bias=True) #?
 
         self.pos_embedding = nn.Parameter(torch.zeros(self.num_patches, self.emb_dim), requires_grad=False)
         
-        self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(8)])
-        self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(1)])
+        self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(10)])
+        self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(2)])
 
         self.decoder_emb_dim = self.emb_dim
         self.decoder_emb = nn.Linear(self.emb_dim, self.decoder_emb_dim, bias=True)
@@ -74,10 +76,10 @@ class MyMAE(nn.Module):
 
         self.decoder_pos_emb = nn.Parameter(torch.zeros(self.num_patches, self.decoder_emb_dim))
 
-        self.img_recov = nn.Linear(self.decoder_emb_dim, 3 * (self.patch_size ** 2), bias=True)
+        self.img_recov = nn.Linear(self.decoder_emb_dim, in_c * (self.patch_size ** 2), bias=True)
         
 
-    def forward(self, x):
+    def forward(self, x, xp):
         bs, _, _, _ = x.shape
         device = x.device
 
@@ -88,8 +90,9 @@ class MyMAE(nn.Module):
         mask = mask[:-self.masked_size]
         masked = patches[:, mask, :]
 
+        pal_emb = self.palette_emb(xp.flatten(1, 2))
         pos_emb = self.pos_embedding[mask, :]
-        tokens = masked + pos_emb[None, ...]
+        tokens = masked + pos_emb[None, ...] + pal_emb[:, None, :]
         features = self.encoder(tokens)
 
         ###### bottleneck
@@ -136,7 +139,7 @@ def train():
 
     pimages = load_dataset().to(device)
 
-    model = MyMAE(72, 4, 64).to(device)
+    model = MyMAE(3, 72, 4, 64).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     mse_loss = nn.MSELoss()
 
@@ -153,6 +156,49 @@ def train():
 
         if i % 5000 == 0:
             plot_images(reconstruction)
+
+    torch.save(model.state_dict(), f'{int(time.time())}_mae.pt') #overfit?
+    torch.save(model.state_dict(), 'last_mae.pt') #overfit?
+
+def train2():
+    device = "cuda"
+
+    pimages, ppalett = load_dataset2()
+    pimages = pimages.to(device)
+    ppalett = ppalett.to(device)
+
+    model = MyMAE(16, 64, 4, 128).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=5e-4)
+    mse_loss = nn.MSELoss()
+
+    for i in tqdm(range(200000), miniters=10):
+        bs = 32
+        source = torch.randint(0, 5, (bs,), device=device)
+        batch = torch.randperm(385, device=device)[:bs]
+
+        x0 = pimages[source, batch]
+        #x0 = torch.stack([pos_transform(x) for x in x0], dim=0)
+        xp = ppalett[source, batch]
+
+        for j in range(bs):
+            pal_shuffle = torch.randperm(16, device=device)
+            x0[j] = x0[j, pal_shuffle, :, :]
+            xp[j] = xp[j, pal_shuffle, :]
+
+        optimizer.zero_grad()
+
+        reconstruction = model(x0, xp)
+        reconstruction = torch.softmax(reconstruction, 1)
+        loss = mse_loss(reconstruction, x0)# + 2.0 * ssim_loss(reconstruction, x0).mean()
+
+        loss.backward()
+        optimizer.step()
+
+        if i % 1000 == 0:
+            rgb = (xp.transpose(1,2) @ x0.flatten(2,3)).unflatten(2, (64, 64))
+            plot_images(rgb)
+            rgbr = (xp.transpose(1,2) @ reconstruction.flatten(2,3)).unflatten(2, (64, 64))
+            plot_images(rgbr)
 
     torch.save(model.state_dict(), f'{int(time.time())}_mae.pt') #overfit?
     torch.save(model.state_dict(), 'last_mae.pt') #overfit?
