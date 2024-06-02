@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import torch
+import torch, os
 from torchvision import transforms
 
 from PIL import Image
@@ -71,6 +71,34 @@ def load_dataset():
     frlg_back = load_images(PATH + "frlg/back/")
 
     return torch.stack([rs, frlg, emerald, rs_back, frlg_back])
+
+
+def load_dataset2():
+
+    src = './dataset2/'
+
+    pokes = os.listdir(src + 'emerald/')
+
+    def load_images(path):
+        ten = []
+        for p in pokes:
+            im = Image.open(path + f"{p}")
+            im = transforms.functional.pil_to_tensor(im)
+            assert im.shape[0] == 1
+
+            ten.append(im)
+        
+        return torch.stack(ten)
+        
+    rs = load_images(src + "rs/")
+    frlg = load_images(src + "frlg/")
+    em = load_images(src + "emerald/")
+
+    rs_back = load_images(src + "rs_back/")
+    frlg_back = load_images(src + "frlg_back/")
+
+    return torch.stack([rs, frlg, em, rs_back, frlg_back])
+
 
 def load_contour():
     

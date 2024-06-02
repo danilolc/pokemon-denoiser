@@ -115,21 +115,33 @@ class MyMAE(nn.Module):
 
 # shuffle palette
 
+def get_batch(bs, pimages):
+    source = torch.randint(0, 5, (bs,))
+    batch = torch.randperm(385)[:bs]
+    x0 = pimages[source, batch]
+    x0 = torch.stack([pos_transform(x) for x in x0], dim=0)
+
+    return x0
+
+def plot_images(x):
+    fig, axes = plt.subplots(1, 4, figsize=(15, 15))
+    plot_image(x[0], axes[0])
+    plot_image(x[1], axes[1])
+    plot_image(x[2], axes[2])
+    plot_image(x[3], axes[3])
+    plt.show()
+
 def train():
     device = "cuda"
 
     pimages = load_dataset().to(device)
 
     model = MyMAE(72, 4, 64).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=2e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     mse_loss = nn.MSELoss()
 
-    for i in tqdm(range(200000), miniters=10):
-        bs = 64
-        source = torch.randint(0, 5, (bs,))
-        batch = torch.randperm(385)[:bs]
-        x0 = pimages[source, batch]
-        x0 = torch.stack([pos_transform(x) for x in x0], dim=0)
+    for i in tqdm(range(2000000), miniters=10):
+        x0 = get_batch(64, pimages)
 
         optimizer.zero_grad()
 
@@ -139,15 +151,26 @@ def train():
         loss.backward()
         optimizer.step()
 
-        if i % 2000 == 0:
-            fig, axes = plt.subplots(1, 4, figsize=(15, 15))
-            plot_image(reconstruction[0], axes[0])
-            plot_image(reconstruction[1], axes[1])
-            plot_image(reconstruction[2], axes[2])
-            plot_image(reconstruction[3], axes[3])
-            plt.show()
+        if i % 5000 == 0:
+            plot_images(reconstruction)
 
     torch.save(model.state_dict(), f'{int(time.time())}_mae.pt') #overfit?
+    torch.save(model.state_dict(), 'last_mae.pt') #overfit?
+
+
+def test():
+    device = "cuda"
+    model = MyMAE(72, 4, 64).to(device)
+
+    sd = torch.load('last_mae.pt')
+    model.load_state_dict(sd)
+    model.eval()
+
+    pimages = load_dataset().to(device)
+    x0 = get_batch(4, pimages)
+
+    plot_images(model(x0))
+
 
 if __name__ == '__main__':
     train()
