@@ -14,9 +14,12 @@ from matplotlib import pyplot as plt
 from UNet import ssim_loss
 
 pos_transform = v2.Compose([
-    v2.Pad(6, 1.0),
-    v2.RandomCrop((64 + 6, 64 + 6)),
-    v2.Pad(1, 1.0),
+    #v2.Pad(6, 1.0),
+    #v2.RandomCrop((64 + 6, 64 + 6)),
+    #v2.Pad(1, 1.0),
+    v2.Pad(8, 1.0),
+    v2.RandomCrop((64 + 8, 64 + 8)),
+    v2.RandomChannelPermutation(),
 ])
 
 #https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
@@ -24,7 +27,7 @@ class Transformer(nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
         self.ln1 = nn.LayerNorm(emb_dim)
-        self.mha = nn.MultiheadAttention(emb_dim, num_heads=4, batch_first=True) ##2?
+        self.mha = nn.MultiheadAttention(emb_dim, num_heads=2, batch_first=True) ##2?
 
         self.ln2 = nn.LayerNorm(emb_dim)
         self.mlp = nn.Sequential(
@@ -117,8 +120,8 @@ def train():
 
     pimages = load_dataset().to(device)
 
-    model = MyMAE(72, 4, 256).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+    model = MyMAE(72, 4, 64).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=2e-4)
     mse_loss = nn.MSELoss()
 
     for i in tqdm(range(200000), miniters=10):
@@ -131,7 +134,7 @@ def train():
         optimizer.zero_grad()
 
         reconstruction = model(x0)
-        loss = mse_loss(reconstruction, x0) + 1.0 * ssim_loss(reconstruction, x0).mean()
+        loss = mse_loss(reconstruction, x0) + 2.0 * ssim_loss(reconstruction, x0).mean()
 
         loss.backward()
         optimizer.step()
