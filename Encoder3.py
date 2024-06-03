@@ -22,6 +22,15 @@ pos_transform = v2.Compose([
     #v2.RandomChannelPermutation(),
 ])
 
+pos_transform2 = v2.Compose([
+    v2.Pad(6, [1] + [0] * 15),
+    v2.RandomCrop((64 + 6, 64 + 6)),
+    v2.Pad(1, [1] + [0] * 15),
+    #v2.Pad(8, 1.0),
+    #v2.RandomCrop((64 + 8, 64 + 8)),
+    #v2.RandomChannelPermutation(),
+])
+
 #https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
 class Transformer(nn.Module):
     def __init__(self, emb_dim):
@@ -167,7 +176,7 @@ def train2():
     pimages = pimages.to(device)
     ppalett = ppalett.to(device)
 
-    model = MyMAE(16, 64, 4, 128).to(device)
+    model = MyMAE(16, 72, 4, 128).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=5e-4)
     mse_loss = nn.MSELoss()
 
@@ -177,10 +186,11 @@ def train2():
         batch = torch.randperm(385, device=device)[:bs]
 
         x0 = pimages[source, batch]
-        #x0 = torch.stack([pos_transform(x) for x in x0], dim=0)
+        x0 = torch.stack([pos_transform2(x) for x in x0], dim=0)
         xp = ppalett[source, batch]
-
+        
         for j in range(bs):
+            xp[j] = v2.ColorJitter(0.1, 0.1, 0.1, 0.2)(xp[[j]].transpose(2, 1)[..., None])[..., 0].transpose(2, 1)
             pal_shuffle = torch.randperm(16, device=device)
             x0[j] = x0[j, pal_shuffle, :, :]
             xp[j] = xp[j, pal_shuffle, :]
@@ -195,14 +205,54 @@ def train2():
         optimizer.step()
 
         if i % 1000 == 0:
-            rgb = (xp.transpose(1,2) @ x0.flatten(2,3)).unflatten(2, (64, 64))
+            rgb = (xp.transpose(1,2) @ x0.flatten(2,3)).unflatten(2, (72, 72))
             plot_images(rgb)
-            rgbr = (xp.transpose(1,2) @ reconstruction.flatten(2,3)).unflatten(2, (64, 64))
+            rgbr = (xp.transpose(1,2) @ reconstruction.flatten(2,3)).unflatten(2, (72, 72))
             plot_images(rgbr)
 
     torch.save(model.state_dict(), f'{int(time.time())}_mae.pt') #overfit?
     torch.save(model.state_dict(), 'last_mae.pt') #overfit?
 
+def test2():
+    device = "cuda"
+
+    pimages, ppalett = load_dataset2()
+    pimages = pimages.to(device)
+    ppalett = ppalett.to(device)
+
+    model = MyMAE(16, 72, 4, 128).to(device)
+
+    sd = torch.load('last_mae.pt')
+    model.load_state_dict(sd)
+    model.eval()
+
+    bs = 4
+    source = torch.randint(0, 5, (bs,), device=device)
+    batch = torch.randperm(385, device=device)[:bs]
+
+    x0 = pimages[source, batch]
+    x0 = torch.stack([pos_transform2(x) for x in x0], dim=0)
+    xp = ppalett[source, batch]
+
+    for j in range(bs):
+        xp[j] = v2.ColorJitter(0.1, 0.1, 0.1, 0.2)(xp[[j]].transpose(2, 1)[..., None])[..., 0].transpose(2, 1)
+        pal_shuffle = torch.randperm(16, device=device)
+        x0[j] = x0[j, pal_shuffle, :, :]
+        xp[j] = xp[j, pal_shuffle, :]
+
+    reconstruction = model(x0, xp)
+    reconstruction = torch.softmax(reconstruction, 1)
+
+    max_idx = torch.argmax(reconstruction, 1, keepdim=True)
+    one_hot = torch.zeros_like(reconstruction).cpu()
+    one_hot.zero_()
+    one_hot.scatter_(1, max_idx.cpu(), 1)
+    one_hot = one_hot.to(device)
+
+    rgbr = (xp.transpose(1,2) @ one_hot.flatten(2,3)).unflatten(2, (72, 72))
+    plot_images(rgbr)
+
+    
 
 def test():
     device = "cuda"
