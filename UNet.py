@@ -174,15 +174,15 @@ class ContourEncoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.step1 = nn.Sequential(
-            DoubleConv(1, 32),
+            DoubleConv(1, 64),
             nn.MaxPool2d(2),
         )
         self.step2 = nn.Sequential(
-            DoubleConv(32, 64),
+            DoubleConv(64, 128),
             nn.MaxPool2d(2),
         )
         self.step3 = nn.Sequential(
-            DoubleConv(64, 128),
+            DoubleConv(128, 256),
             nn.MaxPool2d(2),
         )
 
