@@ -173,12 +173,25 @@ class Up(nn.Module):
 class ContourEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoders = nn.ModuleList()
-        for i in [64, 128, 256, 256, 128, 64]:
-            self.encoders.append(nn.Linear(72 * 72, i))
+        self.step1 = nn.Sequential(
+            DoubleConv(1, 32),
+            nn.MaxPool2d(2),
+        )
+        self.step2 = nn.Sequential(
+            DoubleConv(32, 64),
+            nn.MaxPool2d(2),
+        )
+        self.step3 = nn.Sequential(
+            DoubleConv(64, 128),
+            nn.MaxPool2d(2),
+        )
 
     def forward(self, c):
-        return [enc(c)[:, :, None, None] for enc in self.encoders]
+        c1 = self.step1(c)
+        c2 = self.step2(c1)
+        c3 = self.step3(c2)
+
+        return c1, c2, c3
 
 class TimeEncoder(nn.Module):
     def __init__(self, emb_dim):
@@ -226,7 +239,7 @@ class UNet(nn.Module):
             nn.Conv2d(32, c_out, kernel_size=1),
         )
 
-        self.c_encoder = ContourEncoder()
+        #self.c_encoder = ContourEncoder()
         self.t_encoder = TimeEncoder(time_dim)
 
         self.att1 = NonLocalBlock(64)
