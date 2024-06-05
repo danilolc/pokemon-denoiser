@@ -30,88 +30,32 @@ def ssim_loss(pred, target):
 
     return (1 - ssim) / 2
 
-class GroupNorm(nn.Module):
-    """Group Normalization is a method which normalizes the activation of the layer for better results across any batch size.
-    Note : Weight Standardization is also shown to given better results when added with group norm
-
-    Args:
-        in_channels (int): Number of channels in the input tensor.
-    """
-
-    def __init__(self, in_channels: int) -> None:
+#https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
+class Transformer(nn.Module):
+    def __init__(self, emb_dim):
         super().__init__()
+        self.ln1 = nn.LayerNorm(emb_dim)
+        self.mha = nn.MultiheadAttention(emb_dim, num_heads=2, batch_first=True)#, dropout=0.1)
 
-        # num_groups is according to the official code provided by the authors,
-        # eps is for numerical stability
-        # i think affine here is enabling learnable param for affine trasnform on calculated mean & standard deviation
-        self.group_norm = nn.GroupNorm(
-            num_groups=32, num_channels=in_channels, eps=1e-06, affine=True
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.group_norm(x)
-
-class NonLocalBlock(nn.Module):
-    """Attention mechanism similar to transformers but for CNNs, paper https://arxiv.org/abs/1805.08318
-
-    Args:
-        in_channels (int): Number of channels in the input tensor.
-    """
-
-    def __init__(self, in_channels:int) -> None:
-        super().__init__()
-
-        self.in_channels = in_channels
-
-        # normalization layer
-        self.norm = GroupNorm(in_channels)
-
-        # query, key and value layers
-        self.q = nn.Conv2d(in_channels, in_channels, 1)
-        self.k = nn.Conv2d(in_channels, in_channels, 1)
-        self.v = nn.Conv2d(in_channels, in_channels, 1)
-
-        self.project_out = nn.Sequential(
-            nn.Conv2d(in_channels, 4*in_channels, 1),
+        self.ln2 = nn.LayerNorm(emb_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(emb_dim, 4 * emb_dim),
             nn.GELU(),
-            nn.Conv2d(4*in_channels, in_channels, 1),
+            nn.Linear(4 * emb_dim, emb_dim),
+            #nn.Dropout(0.1),
         )
-
-        self.softmax = nn.Softmax(dim=2)
 
     def forward(self, x):
+        _, _, w, h = x.shape
+        x = x.permute(0, 2, 3, 1).reshape(-1, w * h, x.shape[1])
 
-        batch, channels, height, width = x.size()
-        assert channels == self.in_channels
+        x_ln = self.ln1(x)
+        att, _ = self.mha(x_ln, x_ln, x_ln)
+        
+        att = self.ln2(att + x)
+        att = self.mlp(att) + att
 
-        x = self.norm(x)
-
-        # query, key and value layers
-        q = self.q(x)
-        k = self.k(x)
-        v = self.v(x)
-
-        # resizing the output from 4D to 3D to generate attention map
-        q = q.reshape(batch, self.in_channels, height * width)
-        k = k.reshape(batch, self.in_channels, height * width)
-        v = v.reshape(batch, self.in_channels, height * width)
-
-        # transpose the query tensor for dot product
-        q = q.permute(0, 2, 1)
-
-        # main attention formula
-        scores = torch.bmm(q, k) * (self.in_channels**-0.5)
-        weights = self.softmax(scores)
-        weights = weights.permute(0, 2, 1)
-
-        attention = torch.bmm(v, weights)
-
-        # resizing the output from 3D to 4D to match the input
-        attention = attention.reshape(batch, self.in_channels, height, width)
-        attention = self.project_out(attention)
-
-        # adding the identity to the output
-        return x + attention
+        return att.reshape(-1, w, h, att.shape[-1]).permute(0, 3, 1, 2)
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels=None, residual=False):
@@ -175,27 +119,27 @@ class ContourEncoder(nn.Module):
         super().__init__()
         self.c1 = nn.Sequential(
             nn.Conv2d(1, 64, 2, 2),
-            NonLocalBlock(64),
+            Transformer(64),
         )
         self.c2 = nn.Sequential(
             nn.Conv2d(1, 128, 4, 4),
-            NonLocalBlock(128),
+            Transformer(128),
         )
         self.c3 = nn.Sequential(
             nn.Conv2d(1, 256, 8, 8),
-            NonLocalBlock(256),
+            Transformer(256),
         )
         self.c4 = nn.Sequential(
             nn.Conv2d(1, 256, 8, 8),
-            NonLocalBlock(256),
+            Transformer(256),
         )
         self.c5 = nn.Sequential(
             nn.Conv2d(1, 128, 4, 4),
-            NonLocalBlock(128),
+            Transformer(128),
         )
         self.c6 = nn.Sequential(
             nn.Conv2d(1, 64, 2, 2),
-            NonLocalBlock(64),
+            Transformer(64),
         )
 
     def forward(self, c):
@@ -252,12 +196,12 @@ class UNet(nn.Module):
         self.c_encoder = ContourEncoder()
         self.t_encoder = TimeEncoder(time_dim)
 
-        self.att1 = NonLocalBlock(64)
-        self.att2 = NonLocalBlock(128)
-        self.att3 = NonLocalBlock(256)
-        self.att4 = NonLocalBlock(256)
-        self.att5 = NonLocalBlock(128)
-        self.att6 = NonLocalBlock(64)
+        self.att1 = Transformer(64)
+        self.att2 = Transformer(128)
+        self.att3 = Transformer(256)
+        self.att4 = Transformer(256)
+        self.att5 = Transformer(128)
+        self.att6 = Transformer(64)
 
     def forward(self, x, t, ty, c):
         #c1, c2, c3, c4, c5, c6 = self.c_encoder(c)
