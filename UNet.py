@@ -173,26 +173,34 @@ class Up(nn.Module):
 class ContourEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.step1 = nn.Sequential(
-            DoubleConv(1, 64),
-            nn.MaxPool2d(2),
+        self.c1 = nn.Sequential(
+            nn.Conv2d(1, 64, 2, 2),
+            NonLocalBlock(64),
         )
-        self.step2 = nn.Sequential(
-            DoubleConv(64, 128),
-            nn.MaxPool2d(2),
+        self.c2 = nn.Sequential(
+            nn.Conv2d(1, 128, 4, 4),
+            NonLocalBlock(128),
         )
-        self.step3 = nn.Sequential(
-            DoubleConv(128, 256),
-            nn.MaxPool2d(2),
+        self.c3 = nn.Sequential(
+            nn.Conv2d(1, 256, 8, 8),
+            NonLocalBlock(256),
+        )
+        self.c4 = nn.Sequential(
+            nn.Conv2d(1, 256, 8, 8),
+            NonLocalBlock(256),
+        )
+        self.c5 = nn.Sequential(
+            nn.Conv2d(1, 128, 4, 4),
+            NonLocalBlock(128),
+        )
+        self.c6 = nn.Sequential(
+            nn.Conv2d(1, 64, 2, 2),
+            NonLocalBlock(64),
         )
 
     def forward(self, c):
-        c1 = self.step1(c)
-        c2 = self.step2(c1)
-        c3 = self.step3(c2)
-
-        return c1, c2, c3
-
+        return self.c1(c), self.c2(c), self.c3(c), self.c4(c), self.c5(c), self.c6(c)
+                                                                                        
 class TimeEncoder(nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
@@ -201,15 +209,17 @@ class TimeEncoder(nn.Module):
         for i in [64, 128, 256, 256, 128, 64]:
             self.encoders.append(nn.Linear(emb_dim, i))
 
-    def forward(self, t):
+    def forward(self, t, add = None):
         t = pos_encoding(t, self.emb_dim)
+        if add is not None:
+            t = t + add
         return [enc(t)[:, :, None, None] for enc in self.encoders]
 
 
 class UNet(nn.Module):
     def __init__(self, c_in=3, c_out=3, num_classes=10, time_dim=256):
         super().__init__()
-        #self.label_emb = nn.Embedding(18, num_classes)
+        self.label_emb = nn.Embedding(18, time_dim)
 
         self.enc = nn.Sequential(
             nn.Conv2d(c_in, 32, kernel_size=1),
@@ -239,7 +249,7 @@ class UNet(nn.Module):
             nn.Conv2d(32, c_out, kernel_size=1),
         )
 
-        #self.c_encoder = ContourEncoder()
+        self.c_encoder = ContourEncoder()
         self.t_encoder = TimeEncoder(time_dim)
 
         self.att1 = NonLocalBlock(64)
@@ -250,8 +260,8 @@ class UNet(nn.Module):
         self.att6 = NonLocalBlock(64)
 
     def forward(self, x, t, ty, c):
-        #c1, c2, c3 = self.c_encoder(c.flatten(1,3))
-        t1, t2, t3, t4, t5, t6 = self.t_encoder(t)
+        #c1, c2, c3, c4, c5, c6 = self.c_encoder(c)
+        t1, t2, t3, t4, t5, t6 = self.t_encoder(t, self.label_emb(ty[:, 0]))
         
         x1 = self.enc(x)
         
