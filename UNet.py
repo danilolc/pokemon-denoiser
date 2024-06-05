@@ -35,14 +35,14 @@ class Transformer(nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
         self.ln1 = nn.LayerNorm(emb_dim)
-        self.mha = nn.MultiheadAttention(emb_dim, num_heads=2, batch_first=True)#, dropout=0.1)
+        self.mha = nn.MultiheadAttention(emb_dim, num_heads=2, batch_first=True, dropout=0.2)
 
         self.ln2 = nn.LayerNorm(emb_dim)
         self.mlp = nn.Sequential(
             nn.Linear(emb_dim, 4 * emb_dim),
             nn.GELU(),
             nn.Linear(4 * emb_dim, emb_dim),
-            #nn.Dropout(0.1),
+            nn.Dropout(0.2),
         )
 
     def forward(self, x):
