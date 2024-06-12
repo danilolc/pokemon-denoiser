@@ -26,9 +26,6 @@ pos_transform2 = v2.Compose([
     v2.Pad(6, [1] + [0] * 15),
     v2.RandomCrop((64 + 6, 64 + 6)),
     v2.Pad(1, [1] + [0] * 15),
-    #v2.Pad(8, 1.0),
-    #v2.RandomCrop((64 + 8, 64 + 8)),
-    #v2.RandomChannelPermutation(),
 ])
 
 #https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
@@ -63,19 +60,19 @@ class MyMAE(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
-        self.masked_size = int(0.75 * self.num_patches)
+        self.masked_size = int(0.5 * self.num_patches)
 
         self.palette_emb = nn.Linear(3 * 16, self.emb_dim)
 
         self.patch_embedding = nn.Conv2d(in_c, self.emb_dim, 
                                          kernel_size=patch_size, 
                                          stride=patch_size,
-                                         bias=True) #?
+                                         bias=True)
 
         self.pos_embedding = nn.Parameter(torch.zeros(self.num_patches, self.emb_dim), requires_grad=False)
         
-        self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(10)])
-        self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for i in range(2)])
+        self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(15)])
+        self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(3)])
 
         self.decoder_emb_dim = self.emb_dim
         self.decoder_emb = nn.Linear(self.emb_dim, self.decoder_emb_dim, bias=True)
@@ -177,10 +174,10 @@ def train2():
     ppalett = ppalett.to(device)
 
     model = MyMAE(16, 72, 4, 128).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=5e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=1.2e-4)
     mse_loss = nn.MSELoss()
 
-    for i in tqdm(range(200000), miniters=10):
+    for i in tqdm(range(300000), miniters=10):
         bs = 32
         source = torch.randint(0, 5, (bs,), device=device)
         batch = torch.randperm(385, device=device)[:bs]
@@ -204,7 +201,7 @@ def train2():
         loss.backward()
         optimizer.step()
 
-        if i % 1000 == 0:
+        if i % 2000 == 0:
             rgb = (xp.transpose(1,2) @ x0.flatten(2,3)).unflatten(2, (72, 72))
             plot_images(rgb)
             rgbr = (xp.transpose(1,2) @ reconstruction.flatten(2,3)).unflatten(2, (72, 72))
