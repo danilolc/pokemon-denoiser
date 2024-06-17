@@ -23,9 +23,9 @@ pos_transform = v2.Compose([
 ])
 
 pos_transform2 = v2.Compose([
-    v2.Pad(6, [1] + [0] * 15),
+    v2.Pad(6, [1.] + [0.] * 15),
     v2.RandomCrop((64 + 6, 64 + 6)),
-    v2.Pad(1, [1] + [0] * 15),
+    v2.Pad(1, [1.] + [0.] * 15),
 ])
 
 #https://www.researchgate.net/figure/The-Vision-Transformer-architecture-a-the-main-architecture-of-the-model-b-the_fig2_348947034
@@ -33,7 +33,7 @@ class Transformer(nn.Module):
     def __init__(self, emb_dim):
         super().__init__()
         self.ln1 = nn.LayerNorm(emb_dim)
-        self.mha = nn.MultiheadAttention(emb_dim, num_heads=2, batch_first=True) ##2?
+        self.mha = nn.MultiheadAttention(emb_dim, num_heads=4, batch_first=True) ##2?
 
         self.ln2 = nn.LayerNorm(emb_dim)
         self.mlp = nn.Sequential(
@@ -60,7 +60,6 @@ class MyMAE(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
-        self.masked_size = int(0.5 * self.num_patches)
 
         self.palette_emb = nn.Linear(3 * 16, self.emb_dim)
 
@@ -69,7 +68,8 @@ class MyMAE(nn.Module):
                                          stride=patch_size,
                                          bias=True)
 
-        self.pos_embedding = nn.Parameter(torch.zeros(self.num_patches, self.emb_dim), requires_grad=False)
+        self.pos_embedding = nn.Parameter(torch.zeros(self.num_patches, self.emb_dim))
+        torch.nn.init.normal_(self.pos_embedding, std=.05)
         
         self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(15)])
         self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(3)])
@@ -78,9 +78,10 @@ class MyMAE(nn.Module):
         self.decoder_emb = nn.Linear(self.emb_dim, self.decoder_emb_dim, bias=True)
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, self.decoder_emb_dim))
-        torch.nn.init.normal_(self.mask_token, std=.02)
+        torch.nn.init.normal_(self.mask_token, std=.05)
 
         self.decoder_pos_emb = nn.Parameter(torch.zeros(self.num_patches, self.decoder_emb_dim))
+        torch.nn.init.normal_(self.decoder_pos_emb, std=.05)
 
         self.img_recov = nn.Linear(self.decoder_emb_dim, in_c * (self.patch_size ** 2), bias=True)
         
@@ -92,13 +93,14 @@ class MyMAE(nn.Module):
         patches = self.patch_embedding(x)
         patches = patches.flatten(2, 3).transpose(1, 2)
 
+        masked_entries = int(0.75 * self.num_patches)
         mask = torch.randperm(self.num_patches, device=device) #img size independent?
-        mask = mask[:-self.masked_size]
-        masked = patches[:, mask, :]
+        mask = mask[:-masked_entries]
 
-        pal_emb = self.palette_emb(xp.flatten(1, 2))
-        pos_emb = self.pos_embedding[mask, :]
-        tokens = masked + pos_emb[None, ...] + pal_emb[:, None, :]
+        pal_emb = self.palette_emb(xp.flatten(1, 2))[:, None, :]
+        pos_emb = self.pos_embedding[None, mask, :]
+
+        tokens = patches[:, mask, :] + pos_emb + pal_emb
         features = self.encoder(tokens)
 
         ###### bottleneck
@@ -192,14 +194,14 @@ def train2():
             x0[j] = x0[j, pal_shuffle, :, :]
             xp[j] = xp[j, pal_shuffle, :]
 
-        optimizer.zero_grad()
-
         reconstruction = model(x0, xp)
         reconstruction = torch.softmax(reconstruction, 1)
         loss = mse_loss(reconstruction, x0)# + 2.0 * ssim_loss(reconstruction, x0).mean()
-
         loss.backward()
+
+        #if i % 3 == 0:
         optimizer.step()
+        optimizer.zero_grad()
 
         if i % 2000 == 0:
             rgb = (xp.transpose(1,2) @ x0.flatten(2,3)).unflatten(2, (72, 72))
