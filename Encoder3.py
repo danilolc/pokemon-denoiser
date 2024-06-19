@@ -49,7 +49,7 @@ class Transformer(nn.Module):
         
         att = self.ln2(att + x)
         return self.mlp(att) + att
-    
+
 #https://medium.com/@14prakash/masked-autoencoders-9e0f7a4a2585
 class MyMAE(nn.Module):
     def __init__(self, in_c, img_size, patch_size, emb_dim):
@@ -61,32 +61,30 @@ class MyMAE(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
 
-        self.palette_emb = nn.Linear(3 * 16, self.emb_dim)
+        self.palette_emb = nn.Linear(3 * 16, self.emb_dim, bias=False)
 
         self.patch_embedding = nn.Conv2d(in_c, self.emb_dim, 
                                          kernel_size=patch_size, 
                                          stride=patch_size,
-                                         bias=True)
+                                         bias=False)
 
-        self.pos_embedding = nn.Parameter(torch.zeros(self.num_patches, self.emb_dim))
-        torch.nn.init.normal_(self.pos_embedding, std=.05)
+        self.pos_embedding = nn.Parameter(torch.randn(self.num_patches, self.emb_dim) * .05)
         
         self.encoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(15)])
         self.decoder = nn.Sequential(*[Transformer(self.emb_dim) for _ in range(3)])
 
         self.decoder_emb_dim = self.emb_dim
-        self.decoder_emb = nn.Linear(self.emb_dim, self.decoder_emb_dim, bias=True)
+        self.decoder_emb = nn.Linear(self.emb_dim, self.decoder_emb_dim, bias=False)
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.decoder_emb_dim))
-        torch.nn.init.normal_(self.mask_token, std=.05)
+        self.mask_token = nn.Parameter(torch.randn(self.decoder_emb_dim) * .05)
 
-        self.decoder_pos_emb = nn.Parameter(torch.zeros(self.num_patches, self.decoder_emb_dim))
-        torch.nn.init.normal_(self.decoder_pos_emb, std=.05)
+        self.decoder_pos_emb = nn.Parameter(torch.randn(self.num_patches, self.decoder_emb_dim) * .05)
 
         self.img_recov = nn.Linear(self.decoder_emb_dim, in_c * (self.patch_size ** 2), bias=True)
         
 
     def forward(self, x, xp):
+
         bs, _, _, _ = x.shape
         device = x.device
 
@@ -94,21 +92,32 @@ class MyMAE(nn.Module):
         patches = patches.flatten(2, 3).transpose(1, 2)
 
         masked_entries = int(0.75 * self.num_patches)
-        mask = torch.randperm(self.num_patches, device=device) #img size independent?
-        mask = mask[:-masked_entries]
+
+        #mask = torch.randperm(self.num_patches, device=device)
+        #mask = mask[:-masked_entries]
+        #tokens = patches[:, mask, :] + self.pos_embedding[None, mask, :] + self.channel_embedding[c, None, :]
+
+        mask = torch.stack([torch.randperm(self.num_patches, device=device) for _ in range(bs)])
+        mask = mask[:, :-masked_entries]
+        mask = mask.unsqueeze(-1).expand(-1, -1, self.emb_dim)
+
+        patches = torch.gather(patches, 1, mask)
+        
+        pos_emb = self.pos_embedding.expand(bs, -1, -1)
+        pos_emb = torch.gather(pos_emb, 1, mask)
 
         pal_emb = self.palette_emb(xp.flatten(1, 2))[:, None, :]
-        pos_emb = self.pos_embedding[None, mask, :]
-
-        tokens = patches[:, mask, :] + pos_emb + pal_emb
+        
+        tokens = patches + pos_emb + pal_emb
+        
         features = self.encoder(tokens)
 
         ###### bottleneck
 
-        tokens = self.mask_token.repeat(bs, self.num_patches, 1)
-        tokens[:, mask, :] = self.decoder_emb(features)
+        tokens = self.mask_token[None, None, :].repeat(bs, self.num_patches, 1)
+        tokens = tokens.scatter(1, mask, features)
 
-        tokens = tokens + self.decoder_pos_emb
+        tokens = tokens + self.decoder_pos_emb[None, :, :]
         features = self.decoder(tokens)
 
         image = self.img_recov(features)
@@ -135,7 +144,7 @@ def get_batch(bs, pimages):
     return x0
 
 def plot_images(x):
-    fig, axes = plt.subplots(1, 4, figsize=(15, 15))
+    fig, axes = plt.subplots(1, 4, figsize=(8, 8))
     plot_image(x[0], axes[0])
     plot_image(x[1], axes[1])
     plot_image(x[2], axes[2])
@@ -176,7 +185,7 @@ def train2():
     ppalett = ppalett.to(device)
 
     model = MyMAE(16, 72, 4, 128).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=1.2e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=1.5e-4)
     mse_loss = nn.MSELoss()
 
     for i in tqdm(range(300000), miniters=10):
@@ -233,13 +242,7 @@ def test2():
     x0 = torch.stack([pos_transform2(x) for x in x0], dim=0)
     xp = ppalett[source, batch]
 
-    for j in range(bs):
-        xp[j] = v2.ColorJitter(0.1, 0.1, 0.1, 0.2)(xp[[j]].transpose(2, 1)[..., None])[..., 0].transpose(2, 1)
-        pal_shuffle = torch.randperm(16, device=device)
-        x0[j] = x0[j, pal_shuffle, :, :]
-        xp[j] = xp[j, pal_shuffle, :]
-
-    reconstruction = model(x0, xp)
+    reconstruction = model(x0, xp * 0)
     reconstruction = torch.softmax(reconstruction, 1)
 
     max_idx = torch.argmax(reconstruction, 1, keepdim=True)
@@ -248,6 +251,7 @@ def test2():
     one_hot.scatter_(1, max_idx.cpu(), 1)
     one_hot = one_hot.to(device)
 
+    xp[:, 0] = torch.tensor([0,0,0])
     rgbr = (xp.transpose(1,2) @ one_hot.flatten(2,3)).unflatten(2, (72, 72))
     plot_images(rgbr)
 
